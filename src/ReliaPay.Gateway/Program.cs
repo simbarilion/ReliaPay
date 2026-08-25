@@ -2,6 +2,7 @@ using System.Text.Json;
 using ReliaPay.Contracts;
 using ReliaPay.Contracts.Envelopes;
 using ReliaPay.Gateway.Health;
+using ReliaPay.Gateway.Proxy;
 using ReliaPay.Gateway.Routing;
 
 namespace ReliaPay.Gateway;
@@ -17,7 +18,7 @@ public sealed class Program
     };
 
     /// <summary>
-    /// Запускает HTTP-процесс шлюза с whitelist, liveness и проверкой готовности внутреннего api.
+    /// Запускает HTTP-процесс шлюза: whitelist, health и проксирование на внутренний api.
     /// </summary>
     /// <param name="args">Аргументы хоста ASP.NET Core.</param>
     /// <returns>Код завершения процесса.</returns>
@@ -32,16 +33,21 @@ public sealed class Program
     }
 
     /// <summary>
-    /// Регистрирует типизированные настройки, HTTP-клиент пробы api и JSON с camelCase.
+    /// Регистрирует настройки, пробу ready api, HTTP-прокси и JSON camelCase.
     /// </summary>
     /// <param name="builder">Построитель веб-приложения шлюза.</param>
     private static void ConfigureServices(WebApplicationBuilder builder)
     {
+        builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
         builder.Services.AddSingleton(CreateGatewayOptions(builder.Configuration));
         builder.Services.AddSingleton<GatewayRouteWhitelist>();
         builder.Services.AddHttpClient<ApiReadinessProbe>(static client =>
         {
             client.Timeout = TimeSpan.FromSeconds(2);
+        });
+        builder.Services.AddHttpClient<GatewayProxy>(static client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
         });
         builder.Services.ConfigureHttpJsonOptions(static options =>
         {
@@ -50,14 +56,16 @@ public sealed class Program
     }
 
     /// <summary>
-    /// Каркас конвейера: отсечение не-whitelist путей, health live/ready. Проксирование actions — следующий этап.
+    /// Конвейер: неизвестные пути отсекаются, health обслуживается локально, остальное уходит в api.
     /// </summary>
     /// <param name="app">Собранное веб-приложение.</param>
     private static void ConfigurePipeline(WebApplication app)
     {
+        app.Use(HideUnhandledExceptionsAsync);
         app.Use(RejectUnknownRoutesAsync);
         app.MapGet("/health/live", () => Results.Json(new GatewayHealthPayload("live")));
         app.MapGet("/health/ready", CheckReadyAsync);
+        app.Map("{*path}", ProxyAsync);
     }
 
     /// <summary>
@@ -72,20 +80,28 @@ public sealed class Program
     }
 
     /// <summary>
-    /// Возвращает 200, если внутренний api отвечает на liveness, иначе 503 без утечки внутренних адресов.
+    /// Возвращает 200, если внутренний api готов, иначе 503 без утечки внутренних адресов.
     /// </summary>
     /// <param name="probe">Проба зависимости api.</param>
     /// <param name="cancellationToken">Токен отмены запроса.</param>
     /// <returns>JSON health-ответ.</returns>
     private static async Task<IResult> CheckReadyAsync(ApiReadinessProbe probe, CancellationToken cancellationToken)
     {
-        bool ready = await probe.IsApiLiveAsync(cancellationToken).ConfigureAwait(false);
+        bool ready = await probe.IsApiReadyAsync(cancellationToken).ConfigureAwait(false);
         if (ready)
         {
             return Results.Json(new GatewayHealthPayload("ready"));
         }
 
         return Results.Json(new GatewayHealthPayload("unavailable"), statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
+    /// <summary>
+    /// Проксирует whitelist-маршрут на внутренний api без разбора JWT и catalog.
+    /// </summary>
+    private static Task ProxyAsync(HttpContext context, GatewayProxy proxy, CancellationToken cancellationToken)
+    {
+        return proxy.ProxyAsync(context, cancellationToken);
     }
 
     /// <summary>
@@ -113,5 +129,36 @@ public sealed class Program
         await context.Response
             .WriteAsJsonAsync(envelope, ResponseJsonOptions, context.RequestAborted)
             .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Скрывает необработанные исключения единым 500 без внутренних адресов и stack.
+    /// </summary>
+    private static async Task HideUnhandledExceptionsAsync(HttpContext context, RequestDelegate next)
+    {
+        try
+        {
+            await next(context).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            if (context.Response.HasStarted)
+            {
+                throw;
+            }
+
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            await context.Response
+                .WriteAsJsonAsync(
+                    HttpErrorEnvelope.Create(
+                        ErrorCodes.InternalError,
+                        "request failed",
+                        retryable: false,
+                        correlationId: null,
+                        actionVersion: null),
+                    ResponseJsonOptions,
+                    context.RequestAborted)
+                .ConfigureAwait(false);
+        }
     }
 }
