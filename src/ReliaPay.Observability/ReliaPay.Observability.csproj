@@ -2,7 +2,7 @@
   <PropertyGroup>
     <RootNamespace>ReliaPay.Observability</RootNamespace>
     <AssemblyName>ReliaPay.Observability</AssemblyName>
-    <Description>Источники Activity и соглашения трассировки запросов ReliaPay.</Description>
+    <Description>Источники Activity, след запроса и редaction секретов без ASP.NET.</Description>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\ReliaPay.Contracts\ReliaPay.Contracts.csproj" />

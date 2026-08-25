@@ -24,6 +24,8 @@
     <ProjectReference Include="..\..\src\ReliaPay.Execution\ReliaPay.Execution.csproj" />
     <ProjectReference Include="..\..\src\ReliaPay.Gateway\ReliaPay.Gateway.csproj" />
     <ProjectReference Include="..\..\src\ReliaPay.Json\ReliaPay.Json.csproj" />
+    <ProjectReference Include="..\..\src\ReliaPay.Observability\ReliaPay.Observability.csproj" />
+    <ProjectReference Include="..\..\src\ReliaPay.Observability.Hosting\ReliaPay.Observability.Hosting.csproj" />
     <ProjectReference Include="..\..\src\ReliaPay.OpenApi\ReliaPay.OpenApi.csproj" />
     <ProjectReference Include="..\..\src\ReliaPay.Security\ReliaPay.Security.csproj" />
   </ItemGroup>

@@ -51,6 +51,7 @@ public sealed class ActionExecutor
     /// <param name="principal">Проверенный JWT.</param>
     /// <param name="idempotencyKey">Заголовок Idempotency-Key.</param>
     /// <param name="payloadJson">Сырое JSON-тело.</param>
+    /// <param name="correlationId">Серверный UUID следа, общий с gateway.</param>
     /// <param name="cancellationToken">Токен HTTP-запроса.</param>
     /// <returns>Контрактный HTTP-результат.</returns>
     public async Task<ActionHttpResult> ExecuteAsync(
@@ -58,13 +59,18 @@ public sealed class ActionExecutor
         JwtPrincipal principal,
         string? idempotencyKey,
         string payloadJson,
+        Guid correlationId,
         CancellationToken cancellationToken)
     {
-        Guid correlationId = Guid.NewGuid();
         using Activity? activity = ReliaPayInstrumentation.ActivitySource.StartActivity("api.action.execute");
-        activity?.SetTag("http.route", $"/api/{route.Module}/{route.Action}");
-        activity?.SetTag("module", route.Module);
-        activity?.SetTag("action", route.Action);
+        ReliaPayActivity.ApplyTags(
+            activity,
+            new RequestTrace(
+                correlationId,
+                string.IsNullOrWhiteSpace(idempotencyKey) ? null : idempotencyKey.Trim(),
+                $"/api/{route.Module}/{route.Action}",
+                route.Module,
+                route.Action));
 
         ActionManifest? manifest;
         try

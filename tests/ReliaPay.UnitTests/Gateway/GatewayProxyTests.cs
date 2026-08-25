@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using ReliaPay.Contracts;
 using ReliaPay.Gateway.Configuration;
 using ReliaPay.Gateway.Proxy;
+using ReliaPay.Observability;
 
 namespace ReliaPay.UnitTests.Gateway;
 
@@ -29,7 +30,12 @@ public sealed class GatewayProxyTests
         context.Request.Headers["Idempotency-Key"] = "key-1";
         context.Request.Headers["X-Action-Version"] = "1";
         context.Request.Headers.Cookie = "session=secret";
+        context.Request.Headers[RequestTraceFactory.CorrelationHeaderName] = "11111111-1111-1111-1111-111111111111";
         context.Request.ContentType = "application/json";
+        Guid correlationId = Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+        ReliaPayTraceHttp.Set(
+            context,
+            new RequestTrace(correlationId, "key-1", "/api/payment/request", "payment", "request"));
 
         await CreateProxy(handler).ProxyAsync(context, CancellationToken.None);
 
@@ -39,6 +45,8 @@ public sealed class GatewayProxyTests
         handler.Headers.Should().ContainKey("Authorization").WhoseValue.Should().Equal("Bearer test-token");
         handler.Headers.Should().ContainKey("Idempotency-Key").WhoseValue.Should().Equal("key-1");
         handler.Headers.Should().ContainKey("X-Action-Version").WhoseValue.Should().Equal("1");
+        handler.Headers.Should().ContainKey(RequestTraceFactory.CorrelationHeaderName)
+            .WhoseValue.Should().Equal(correlationId.ToString());
         handler.Headers.Should().ContainKey("Content-Type").WhoseValue.Should().Contain(value => value.Contains("application/json", StringComparison.Ordinal));
         handler.Headers.Should().NotContainKey("Cookie");
         if (handler.Headers.TryGetValue("Host", out string[]? host))

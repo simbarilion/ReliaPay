@@ -7,6 +7,7 @@ using ReliaPay.Contracts.Envelopes;
 using ReliaPay.Data;
 using ReliaPay.Execution;
 using ReliaPay.Json;
+using ReliaPay.Observability;
 using ReliaPay.OpenApi;
 using ReliaPay.Security;
 
@@ -38,7 +39,7 @@ public sealed class Program
     /// <param name="builder">Построитель веб-приложения api.</param>
     private static void ConfigureServices(WebApplicationBuilder builder)
     {
-        builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
+        builder.AddReliaPayTracing("ReliaPay.Api", mintCorrelationId: false);
         builder.Services.ConfigureHttpJsonOptions(static options =>
         {
             options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
@@ -58,6 +59,7 @@ public sealed class Program
     /// <param name="app">Собранное веб-приложение.</param>
     private static void ConfigurePipeline(WebApplication app)
     {
+        app.UseReliaPayTracing();
         app.Use(HideUnhandledExceptionsAsync);
         app.MapGet("/health/live", () => Results.Json(new ApiHealthPayload("live")));
         app.MapGet("/health/ready", CheckReadyAsync);
@@ -186,6 +188,7 @@ public sealed class Program
         JwtPrincipal principal = await authenticator
             .AuthenticateAsync(httpContext.Request.Headers.Authorization.ToString())
             .ConfigureAwait(false);
+        Guid correlationId = ReliaPayTraceHttp.Get(httpContext)?.CorrelationId ?? Guid.NewGuid();
         if (!principal.IsAuthenticated)
         {
             return ApiJson.Error(
@@ -211,7 +214,7 @@ public sealed class Program
         }
 
         ActionHttpResult result = await executor
-            .ExecuteAsync(route, principal, idempotencyKey, payloadJson, cancellationToken)
+            .ExecuteAsync(route, principal, idempotencyKey, payloadJson, correlationId, cancellationToken)
             .ConfigureAwait(false);
         return result switch
         {
@@ -223,7 +226,7 @@ public sealed class Program
                     ErrorCodes.InternalError,
                     "action failed",
                     retryable: false,
-                    correlationId: null,
+                    correlationId: correlationId,
                     actionVersion: null)),
         };
     }
@@ -251,7 +254,7 @@ public sealed class Program
                         ErrorCodes.InternalError,
                         "action failed",
                         retryable: false,
-                        correlationId: null,
+                        correlationId: ReliaPayTraceHttp.Get(context)?.CorrelationId,
                         actionVersion: null),
                     ApiJson.ResponseOptions,
                     context.RequestAborted)

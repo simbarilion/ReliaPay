@@ -7,7 +7,7 @@ namespace ReliaPay.Security;
 /// <param name="Principal">Идентификатор субъекта из claim <c>sub</c>.</param>
 /// <param name="Consumer">Канал-потребитель из claim <c>consumer</c>.</param>
 /// <param name="Scopes">Набор полномочий из claim <c>scope</c>; источник — только проверенный JWT.</param>
-/// <param name="CorrelationId">UUID, сгенерированный runtime на каждый HTTP-запрос.</param>
+    /// <param name="CorrelationId">UUID следа запроса: mintит gateway, api только переиспользует.</param>
 /// <param name="RequestId">Значение Idempotency-Key, если заголовок передан; иначе null.</param>
 /// <param name="Deadline">Момент истечения, вычисленный из <c>timeout_ms</c> манифеста.</param>
 public sealed record TrustedContext(

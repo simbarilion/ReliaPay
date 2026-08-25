@@ -10,7 +10,7 @@ namespace ReliaPay.Gateway.Proxy;
 
 /// <summary>
 /// Проксирует whitelist-запросы на внутренний api по Compose DNS.
-/// Не читает JWT, catalog и PostgreSQL: только метод, путь и контрактные заголовки.
+/// Не читает JWT, catalog и PostgreSQL: метод, путь, контрактные заголовки и серверный X-Correlation-Id.
 /// </summary>
 public sealed class GatewayProxy
 {
@@ -52,13 +52,28 @@ public sealed class GatewayProxy
     {
         ArgumentNullException.ThrowIfNull(context);
         using Activity? activity = ReliaPayInstrumentation.ActivitySource.StartActivity("gateway.proxy");
+        RequestTrace? trace = ReliaPayTraceHttp.Get(context);
         string path = context.Request.Path.Value ?? "/";
         string target = path + context.Request.QueryString.Value;
-        activity?.SetTag("http.route", path);
+        if (trace is not null)
+        {
+            ReliaPayActivity.ApplyTags(activity, trace);
+        }
+        else
+        {
+            activity?.SetTag("http.route", path);
+        }
+
         activity?.SetTag("peer.service", "api");
 
         using HttpRequestMessage request = new(new HttpMethod(context.Request.Method), new Uri(_options.ApiBaseUrl, target));
         CopyContractHeaders(context.Request.Headers, request);
+        if (trace is not null)
+        {
+            request.Headers.TryAddWithoutValidation(
+                RequestTraceFactory.CorrelationHeaderName,
+                trace.CorrelationId.ToString("D"));
+        }
         if (ShouldSendBody(context.Request))
         {
             StreamContent content = new(context.Request.Body);
@@ -145,11 +160,12 @@ public sealed class GatewayProxy
     /// </summary>
     private static Task WriteDependencyUnavailableAsync(HttpContext context, CancellationToken cancellationToken)
     {
+        Guid? correlationId = ReliaPayTraceHttp.Get(context)?.CorrelationId;
         HttpErrorEnvelope envelope = HttpErrorEnvelope.Create(
             ErrorCodes.DependencyUnavailable,
             "internal API is unavailable",
             retryable: true,
-            correlationId: null,
+            correlationId: correlationId,
             actionVersion: null);
         context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
         return context.Response.WriteAsJsonAsync(envelope, ResponseJsonOptions, cancellationToken);

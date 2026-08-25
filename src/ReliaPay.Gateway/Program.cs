@@ -4,6 +4,7 @@ using ReliaPay.Contracts.Envelopes;
 using ReliaPay.Gateway.Health;
 using ReliaPay.Gateway.Proxy;
 using ReliaPay.Gateway.Routing;
+using ReliaPay.Observability;
 
 namespace ReliaPay.Gateway;
 
@@ -38,7 +39,7 @@ public sealed class Program
     /// <param name="builder">Построитель веб-приложения шлюза.</param>
     private static void ConfigureServices(WebApplicationBuilder builder)
     {
-        builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
+        builder.AddReliaPayTracing("ReliaPay.Gateway", mintCorrelationId: true);
         builder.Services.AddSingleton(CreateGatewayOptions(builder.Configuration));
         builder.Services.AddSingleton<GatewayRouteWhitelist>();
         builder.Services.AddHttpClient<ApiReadinessProbe>(static client =>
@@ -61,6 +62,7 @@ public sealed class Program
     /// <param name="app">Собранное веб-приложение.</param>
     private static void ConfigurePipeline(WebApplication app)
     {
+        app.UseReliaPayTracing();
         app.Use(HideUnhandledExceptionsAsync);
         app.Use(RejectUnknownRoutesAsync);
         app.MapGet("/health/live", () => Results.Json(new GatewayHealthPayload("live")));
@@ -154,7 +156,7 @@ public sealed class Program
                         ErrorCodes.InternalError,
                         "request failed",
                         retryable: false,
-                        correlationId: null,
+                        correlationId: ReliaPayTraceHttp.Get(context)?.CorrelationId,
                         actionVersion: null),
                     ResponseJsonOptions,
                     context.RequestAborted)
