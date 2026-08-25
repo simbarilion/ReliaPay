@@ -14,6 +14,7 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\ReliaPay.TestSupport\ReliaPay.TestSupport.csproj" />
     <ProjectReference Include="..\..\src\ReliaPay.Contracts\ReliaPay.Contracts.csproj" />
   </ItemGroup>
 </Project>

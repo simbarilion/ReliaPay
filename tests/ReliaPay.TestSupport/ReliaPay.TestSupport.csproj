@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ReliaPay.TestSupport</RootNamespace>
+    <AssemblyName>ReliaPay.TestSupport</AssemblyName>
+    <Description>Общие HTTP- и JWT-хелперы для интеграционных и стресс-тестов шлюза.</Description>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ReliaPay.Contracts\ReliaPay.Contracts.csproj" />
+  </ItemGroup>
+</Project>
