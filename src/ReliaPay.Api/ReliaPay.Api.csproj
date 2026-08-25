@@ -9,6 +9,7 @@
     <ProjectReference Include="..\ReliaPay.Contracts\ReliaPay.Contracts.csproj" />
     <ProjectReference Include="..\ReliaPay.Data\ReliaPay.Data.csproj" />
     <ProjectReference Include="..\ReliaPay.Execution\ReliaPay.Execution.csproj" />
+    <ProjectReference Include="..\ReliaPay.Json\ReliaPay.Json.csproj" />
     <ProjectReference Include="..\ReliaPay.Observability\ReliaPay.Observability.csproj" />
     <ProjectReference Include="..\ReliaPay.OpenApi\ReliaPay.OpenApi.csproj" />
     <ProjectReference Include="..\ReliaPay.Security\ReliaPay.Security.csproj" />

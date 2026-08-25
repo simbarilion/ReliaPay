@@ -5,6 +5,7 @@
     <Description>Доверенный контекст, проверка JWT claims и политика доступа.</Description>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.14.0" />
     <ProjectReference Include="..\ReliaPay.Contracts\ReliaPay.Contracts.csproj" />
   </ItemGroup>
 </Project>

@@ -56,7 +56,7 @@ public sealed class PostgresEndpoints
     public string RuntimePassword { get; }
 
     /// <summary>
-    /// Читает параметры из переменных окружения процесса CLI или API.
+    /// Читает параметры CLI: host и обе прикладные роли.
     /// </summary>
     /// <returns>Типизированные параметры подключения.</returns>
     /// <exception cref="InvalidOperationException">Обязательная переменная не задана или порт нечисловой.</exception>
@@ -70,6 +70,23 @@ public sealed class PostgresEndpoints
             publicationPassword: ReadRequired("COURSE_PUBLICATION_PASSWORD"),
             runtimeUser: Environment.GetEnvironmentVariable("COURSE_RUNTIME_USER") ?? PostgresRoles.Runtime,
             runtimePassword: Environment.GetEnvironmentVariable("COURSE_RUNTIME_PASSWORD") ?? string.Empty);
+    }
+
+    /// <summary>
+    /// Читает параметры HTTP runtime. Publication-пароль API не использует.
+    /// </summary>
+    /// <returns>Параметры с заполненной runtime-ролью.</returns>
+    /// <exception cref="InvalidOperationException">Нет host/db/runtime credentials.</exception>
+    public static PostgresEndpoints FromRuntimeEnvironment()
+    {
+        return new PostgresEndpoints(
+            host: ReadRequired("COURSE_DB_HOST"),
+            port: ReadPort("COURSE_DB_PORT"),
+            database: ReadRequired("COURSE_DB_NAME"),
+            publicationUser: Environment.GetEnvironmentVariable("COURSE_PUBLICATION_USER") ?? PostgresRoles.Publication,
+            publicationPassword: Environment.GetEnvironmentVariable("COURSE_PUBLICATION_PASSWORD") ?? string.Empty,
+            runtimeUser: Environment.GetEnvironmentVariable("COURSE_RUNTIME_USER") ?? PostgresRoles.Runtime,
+            runtimePassword: ReadRequired("COURSE_RUNTIME_PASSWORD"));
     }
 
     /// <summary>
