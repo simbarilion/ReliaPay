@@ -29,6 +29,7 @@ public sealed class CourseContractTests
         ErrorCodes.ActionTimeout.Should().Be("action.timeout");
         ErrorCodes.InternalError.Should().Be("internal.error");
         ErrorCodes.ManifestConflict.Should().Be("manifest.conflict");
+        ErrorCodes.OperationNotFound.Should().Be("operation.not_found");
         ErrorCodes.MigrationConflict.Should().Be("migration.conflict");
     }
 
