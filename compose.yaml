@@ -7,8 +7,11 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-course}
+      COURSE_PUBLICATION_PASSWORD: ${COURSE_PUBLICATION_PASSWORD}
+      COURSE_RUNTIME_PASSWORD: ${COURSE_RUNTIME_PASSWORD}
     volumes:
       - course_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d course"]
       interval: 5s
@@ -35,6 +38,8 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-Information}
     depends_on:
       postgres:
+        condition: service_healthy
+      cli:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health/live"]
@@ -76,10 +81,18 @@ services:
       COURSE_DB_NAME: ${COURSE_DB_NAME:-course}
       COURSE_PUBLICATION_USER: ${COURSE_PUBLICATION_USER:-course_publication}
       COURSE_PUBLICATION_PASSWORD: ${COURSE_PUBLICATION_PASSWORD}
+      COURSE_MIGRATIONS_PATH: /migrations
+      COURSE_MIGRATION_READY_FILE: /tmp/reliapay-migrated
       LOG_LEVEL: ${LOG_LEVEL:-Information}
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/reliapay-migrated || exit 1"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 10s
     restart: unless-stopped
 
 volumes:

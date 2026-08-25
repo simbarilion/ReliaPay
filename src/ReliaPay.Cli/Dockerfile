@@ -10,5 +10,6 @@ RUN dotnet publish src/ReliaPay.Cli/ReliaPay.Cli.csproj -c Release -o /app/publi
 FROM mcr.microsoft.com/dotnet/runtime:10.0 AS runtime
 WORKDIR /app
 COPY --from=build /app/publish .
+COPY db/migrations /migrations
 USER $APP_UID
 ENTRYPOINT ["dotnet", "ReliaPay.Cli.dll"]

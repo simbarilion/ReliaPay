@@ -1,47 +1,80 @@
 using System.Runtime.InteropServices;
-using System.Text.Json;
+using ReliaPay.Contracts;
 using ReliaPay.Contracts.Envelopes;
 
 namespace ReliaPay.Cli;
 
 /// <summary>
-/// Точка входа Course CLI. Команды контракта подключаются отдельным этапом;
-/// без аргументов процесс остаётся в idle, чтобы сервис Compose считался запущенным.
+/// Точка входа Course CLI. Без аргументов применяет встроенные миграции и остаётся в idle.
+/// Явная команда <c>migration apply</c> выполняет тот же апплаер и завершается.
 /// </summary>
 public sealed class Program
 {
-    private static readonly JsonSerializerOptions StdoutJson = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
-    };
-
     /// <summary>
-    /// Разбирает аргументы контейнера: пустой список — idle, иначе контрактная заглушка ошибки в stdout.
+    /// Разбирает аргументы контейнера и направляет их в команду или idle-цикл.
     /// </summary>
     /// <param name="args">Аргументы <c>docker compose run cli ...</c>.</param>
-    /// <returns>Ноль для idle, ненулевой код при вызове ещё не реализованной команды.</returns>
+    /// <returns>Код процесса для Compose и автопроверки.</returns>
     public static async Task<int> Main(string[] args)
     {
         if (args.Length == 0)
         {
+            string bundled = Environment.GetEnvironmentVariable("COURSE_MIGRATIONS_PATH") ?? "/migrations";
+            int applyCode = await MigrationApplyCommand.ExecuteAsync(bundled, CancellationToken.None).ConfigureAwait(false);
+            if (applyCode != 0)
+            {
+                return applyCode;
+            }
+
+            WriteReadyMarker();
             await WaitUntilShutdownAsync().ConfigureAwait(false);
             return 0;
         }
 
-        CliErrorEnvelope envelope = CliErrorEnvelope.Create(
-            "cli.not_implemented",
-            "course CLI commands are not implemented in the solution skeleton");
-        string json = JsonSerializer.Serialize(envelope, StdoutJson);
-        await Console.Out.WriteLineAsync(json).ConfigureAwait(false);
-        await Console.Error.WriteLineAsync("Pass migration/action commands after the CLI image is completed.").ConfigureAwait(false);
+        if (args.Length == 3
+            && string.Equals(args[0], "migration", StringComparison.Ordinal)
+            && string.Equals(args[1], "apply", StringComparison.Ordinal))
+        {
+            int applyCode = await MigrationApplyCommand.ExecuteAsync(args[2], CancellationToken.None).ConfigureAwait(false);
+            if (applyCode == 0)
+            {
+                WriteReadyMarker();
+            }
+
+            return applyCode;
+        }
+
+        await CliStdout.WriteAsync(
+                CliErrorEnvelope.Create(
+                    ErrorCodes.RequestInvalid,
+                    "command is not implemented"))
+            .ConfigureAwait(false);
+        await Console.Error.WriteLineAsync("Supported command: migration apply <directory>.").ConfigureAwait(false);
         return 1;
     }
 
     /// <summary>
-    /// Держит процесс живым до SIGTERM/SIGINT, чтобы <c>docker compose up</c> видел сервис cli запущенным.
+    /// Сообщает Compose healthcheck, что checksum-миграции успешно применены.
     /// </summary>
-    /// <returns>Задача, завершающаяся при сигнале остановки контейнера.</returns>
+    private static void WriteReadyMarker()
+    {
+        string path = Environment.GetEnvironmentVariable("COURSE_MIGRATION_READY_FILE")
+            ?? (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS()
+                ? "/tmp/reliapay-migrated"
+                : Path.Combine(Path.GetTempPath(), "reliapay-migrated"));
+        string? directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        File.WriteAllText(path, "ok");
+    }
+
+    /// <summary>
+    /// Держит процесс живым до SIGTERM/SIGINT, чтобы сервис cli в Compose оставался Up.
+    /// </summary>
+    /// <returns>Задача, завершающаяся при остановке контейнера.</returns>
     private static async Task WaitUntilShutdownAsync()
     {
         using var shutdown = new CancellationTokenSource();

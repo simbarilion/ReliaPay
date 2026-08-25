@@ -19,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\ReliaPay.Catalog\ReliaPay.Catalog.csproj" />
     <ProjectReference Include="..\..\src\ReliaPay.Contracts\ReliaPay.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\ReliaPay.Data\ReliaPay.Data.csproj" />
     <ProjectReference Include="..\..\src\ReliaPay.Gateway\ReliaPay.Gateway.csproj" />
     <ProjectReference Include="..\..\src\ReliaPay.Security\ReliaPay.Security.csproj" />
   </ItemGroup>

@@ -70,4 +70,14 @@ public static class ErrorCodes
     /// Предметная операция с указанным идентификатором не найдена.
     /// </summary>
     public const string OperationNotFound = "operation.not_found";
+
+    /// <summary>
+    /// Файл миграции уже применялся с другим checksum.
+    /// </summary>
+    public const string MigrationConflict = "migration.conflict";
+
+    /// <summary>
+    /// Каталог миграций отсутствует либо не читается.
+    /// </summary>
+    public const string MigrationInvalid = "migration.invalid";
 }
