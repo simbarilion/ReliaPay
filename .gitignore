@@ -1,0 +1,49 @@
+# ================================
+# Python / FastAPI
+# ================================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.pyc
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+env/
+
+# Poetry
+.cache/
+*.egg-info/
+
+# Environment variables
+.env
+!.env.example
+
+# ================================
+# Logs
+# ================================
+*.log
+logs/
+log/
+
+# ================================
+# Docker
+# ================================
+*.pid
+docker-compose.override.yml
+
+# ================================
+# IDE / Editors
+# ================================
+.idea/
+.vscode/
+*.iml
+
+# ================================
+# Temporary files
+# ================================
+tmp/
+temp/
