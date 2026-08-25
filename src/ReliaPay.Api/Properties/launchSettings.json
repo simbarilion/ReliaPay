@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "ReliaPay.Api": {
+      "commandName": "Project",
+      "applicationUrl": "http://localhost:8081",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

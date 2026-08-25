@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ReliaPay.Contracts</RootNamespace>
+    <AssemblyName>ReliaPay.Contracts</AssemblyName>
+    <Description>Контракты HTTP и CLI конвертов, коды ошибок и константы ModuleDev course-1.</Description>
+  </PropertyGroup>
+</Project>

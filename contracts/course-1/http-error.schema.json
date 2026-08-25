@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reliapay.local/contracts/course-1/http-error.schema.json",
+  "title": "HttpErrorEnvelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "code", "message", "retryable", "details", "meta"],
+  "properties": {
+    "status": { "type": "string", "const": "error" },
+    "code": { "type": "string", "minLength": 1 },
+    "message": { "type": "string", "minLength": 1 },
+    "retryable": { "type": "boolean" },
+    "details": { "type": "object" },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["correlationId", "actionVersion"],
+      "properties": {
+        "correlationId": {
+          "type": ["string", "null"],
+          "format": "uuid"
+        },
+        "actionVersion": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        }
+      }
+    }
+  }
+}

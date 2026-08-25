@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reliapay.local/contracts/course-1/invoke-envelope.schema.json",
+  "title": "ApiInvokeEnvelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status"],
+  "properties": {
+    "status": { "type": "string", "enum": ["ok", "error"] },
+    "outcome": { "type": "string" },
+    "result": { "type": "object" },
+    "code": { "type": "string" },
+    "message": { "type": "string" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "status": { "const": "ok" } }
+      },
+      "then": {
+        "required": ["outcome", "result"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "status": { "const": "error" } }
+      },
+      "then": {
+        "required": ["code", "message"]
+      }
+    }
+  ]
+}

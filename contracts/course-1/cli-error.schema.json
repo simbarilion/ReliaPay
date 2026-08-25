@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reliapay.local/contracts/course-1/cli-error.schema.json",
+  "title": "CliErrorEnvelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "code", "message", "meta"],
+  "properties": {
+    "status": { "type": "string", "const": "error" },
+    "code": { "type": "string", "minLength": 1 },
+    "message": { "type": "string", "minLength": 1 },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contractVersion"],
+      "properties": {
+        "contractVersion": { "type": "string", "const": "course-1" }
+      }
+    }
+  }
+}

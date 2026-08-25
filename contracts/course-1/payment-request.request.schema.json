@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reliapay.local/contracts/course-1/payment-request.request.schema.json",
+  "title": "PaymentRequestPayload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["operationKind", "amount", "currency"],
+  "properties": {
+    "operationKind": {
+      "type": "string",
+      "enum": ["PAYMENT_EXECUTION", "PAYMENT_APPROVAL"]
+    },
+    "amount": {
+      "type": "string",
+      "pattern": "^(?:0\\.(?:0[1-9]|[1-9][0-9]?)|[1-9][0-9]{0,15}(?:\\.[0-9]{1,2})?)$",
+      "description": "Decimal string from 0.01 to 9999999999999999.99, no exponent, at most two fraction digits."
+    },
+    "currency": {
+      "type": "string",
+      "const": "RUB"
+    }
+  }
+}

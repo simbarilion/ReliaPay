@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <RootNamespace>ReliaPay.Api</RootNamespace>
+    <AssemblyName>ReliaPay.Api</AssemblyName>
+    <Description>Внутренний action runtime: JWT, catalog, транзакция и api.invoke.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ReliaPay.Catalog\ReliaPay.Catalog.csproj" />
+    <ProjectReference Include="..\ReliaPay.Contracts\ReliaPay.Contracts.csproj" />
+    <ProjectReference Include="..\ReliaPay.Data\ReliaPay.Data.csproj" />
+    <ProjectReference Include="..\ReliaPay.Execution\ReliaPay.Execution.csproj" />
+    <ProjectReference Include="..\ReliaPay.Observability\ReliaPay.Observability.csproj" />
+    <ProjectReference Include="..\ReliaPay.OpenApi\ReliaPay.OpenApi.csproj" />
+    <ProjectReference Include="..\ReliaPay.Security\ReliaPay.Security.csproj" />
+  </ItemGroup>
+</Project>

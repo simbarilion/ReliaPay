@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ReliaPay.Catalog</RootNamespace>
+    <AssemblyName>ReliaPay.Catalog</AssemblyName>
+    <Description>Чтение и публикация неизменяемого каталога action-манифестов.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ReliaPay.Contracts\ReliaPay.Contracts.csproj" />
+    <ProjectReference Include="..\ReliaPay.Data\ReliaPay.Data.csproj" />
+  </ItemGroup>
+</Project>

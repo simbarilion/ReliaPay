@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>ReliaPay.Cli</RootNamespace>
+    <AssemblyName>ReliaPay.Cli</AssemblyName>
+    <Description>Course CLI: checksum-миграции и жизненный цикл action-манифестов.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ReliaPay.Catalog\ReliaPay.Catalog.csproj" />
+    <ProjectReference Include="..\ReliaPay.Contracts\ReliaPay.Contracts.csproj" />
+    <ProjectReference Include="..\ReliaPay.Data\ReliaPay.Data.csproj" />
+  </ItemGroup>
+</Project>

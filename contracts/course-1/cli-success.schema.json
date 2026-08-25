@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reliapay.local/contracts/course-1/cli-success.schema.json",
+  "title": "CliSuccessEnvelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "result", "meta"],
+  "properties": {
+    "status": { "type": "string", "const": "ok" },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resource", "operation", "key"],
+      "properties": {
+        "resource": { "type": "string", "minLength": 1 },
+        "operation": { "type": "string", "minLength": 1 },
+        "key": { "type": "string", "minLength": 1 },
+        "version": { "type": ["integer", "null"], "minimum": 1 }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contractVersion"],
+      "properties": {
+        "contractVersion": { "type": "string", "const": "course-1" }
+      }
+    }
+  }
+}

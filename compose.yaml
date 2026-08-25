@@ -1,0 +1,86 @@
+name: reliapay
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-course}
+    volumes:
+      - course_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d course"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: src/ReliaPay.Api/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      ASPNETCORE_URLS: http://+:8080
+      COURSE_JWT_ISSUER: ${COURSE_JWT_ISSUER:-moduledev-course}
+      COURSE_JWT_AUDIENCE: ${COURSE_JWT_AUDIENCE:-moduledev-api}
+      COURSE_JWT_SIGNING_KEY: ${COURSE_JWT_SIGNING_KEY}
+      COURSE_DB_HOST: postgres
+      COURSE_DB_PORT: ${COURSE_DB_PORT:-5432}
+      COURSE_DB_NAME: ${COURSE_DB_NAME:-course}
+      COURSE_RUNTIME_USER: ${COURSE_RUNTIME_USER:-course_runtime}
+      COURSE_RUNTIME_PASSWORD: ${COURSE_RUNTIME_PASSWORD}
+      LOG_LEVEL: ${LOG_LEVEL:-Information}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: .
+      dockerfile: src/ReliaPay.Gateway/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      ASPNETCORE_URLS: http://+:8080
+      COURSE_API_BASE_URL: http://api:8080
+      LOG_LEVEL: ${LOG_LEVEL:-Information}
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  cli:
+    build:
+      context: .
+      dockerfile: src/ReliaPay.Cli/Dockerfile
+    environment:
+      COURSE_DB_HOST: postgres
+      COURSE_DB_PORT: ${COURSE_DB_PORT:-5432}
+      COURSE_DB_NAME: ${COURSE_DB_NAME:-course}
+      COURSE_PUBLICATION_USER: ${COURSE_PUBLICATION_USER:-course_publication}
+      COURSE_PUBLICATION_PASSWORD: ${COURSE_PUBLICATION_PASSWORD}
+      LOG_LEVEL: ${LOG_LEVEL:-Information}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  course_data:

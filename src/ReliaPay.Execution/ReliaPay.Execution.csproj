@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ReliaPay.Execution</RootNamespace>
+    <AssemblyName>ReliaPay.Execution</AssemblyName>
+    <Description>Универсальный исполнитель HTTP-action: схема, транзакция, api.invoke.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ReliaPay.Catalog\ReliaPay.Catalog.csproj" />
+    <ProjectReference Include="..\ReliaPay.Contracts\ReliaPay.Contracts.csproj" />
+    <ProjectReference Include="..\ReliaPay.Data\ReliaPay.Data.csproj" />
+    <ProjectReference Include="..\ReliaPay.Json\ReliaPay.Json.csproj" />
+    <ProjectReference Include="..\ReliaPay.Observability\ReliaPay.Observability.csproj" />
+    <ProjectReference Include="..\ReliaPay.Security\ReliaPay.Security.csproj" />
+  </ItemGroup>
+</Project>

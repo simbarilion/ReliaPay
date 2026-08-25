@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ReliaPay.Data</RootNamespace>
+    <AssemblyName>ReliaPay.Data</AssemblyName>
+    <Description>Подключение к PostgreSQL по прикладным ролям и границы транзакций.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ReliaPay.Contracts\ReliaPay.Contracts.csproj" />
+    <ProjectReference Include="..\ReliaPay.Observability\ReliaPay.Observability.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reliapay.local/contracts/course-1/trusted-context.schema.json",
+  "title": "TrustedContext",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "principal",
+    "consumer",
+    "scopes",
+    "correlationId",
+    "requestId",
+    "deadline"
+  ],
+  "properties": {
+    "principal": { "type": "string", "minLength": 1 },
+    "consumer": { "type": "string", "minLength": 1 },
+    "scopes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "correlationId": { "type": "string", "format": "uuid" },
+    "requestId": { "type": ["string", "null"] },
+    "deadline": { "type": "string", "format": "date-time" }
+  }
+}

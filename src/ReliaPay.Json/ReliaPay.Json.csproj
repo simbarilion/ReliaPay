@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ReliaPay.Json</RootNamespace>
+    <AssemblyName>ReliaPay.Json</AssemblyName>
+    <Description>Проверка JSON-документов по JSON Schema манифеста.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ReliaPay.Contracts\ReliaPay.Contracts.csproj" />
+  </ItemGroup>
+</Project>

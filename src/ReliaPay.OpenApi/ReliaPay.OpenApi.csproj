@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ReliaPay.OpenApi</RootNamespace>
+    <AssemblyName>ReliaPay.OpenApi</AssemblyName>
+    <Description>Сборка JSON OpenAPI-документов из опубликованных манифестов.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ReliaPay.Catalog\ReliaPay.Catalog.csproj" />
+    <ProjectReference Include="..\ReliaPay.Contracts\ReliaPay.Contracts.csproj" />
+  </ItemGroup>
+</Project>

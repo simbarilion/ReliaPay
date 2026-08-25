@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ReliaPay.Security</RootNamespace>
+    <AssemblyName>ReliaPay.Security</AssemblyName>
+    <Description>Доверенный контекст, проверка JWT claims и политика доступа.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ReliaPay.Contracts\ReliaPay.Contracts.csproj" />
+  </ItemGroup>
+</Project>

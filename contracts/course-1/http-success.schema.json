@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reliapay.local/contracts/course-1/http-success.schema.json",
+  "title": "HttpSuccessEnvelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "outcome", "result", "meta"],
+  "properties": {
+    "status": { "type": "string", "const": "ok" },
+    "outcome": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$"
+    },
+    "result": { "type": "object" },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["correlationId", "actionVersion"],
+      "properties": {
+        "correlationId": { "type": "string", "format": "uuid" },
+        "actionVersion": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

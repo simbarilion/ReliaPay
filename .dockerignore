@@ -1,0 +1,16 @@
+.git
+.vs
+.idea
+.vscode
+.workspace
+**/.git
+**/bin
+**/obj
+**/TestResults
+**/*.user
+.env
+logs
+*.log
+week-1-public-report.json
+.dockerignore
+**/Properties/launchSettings.json

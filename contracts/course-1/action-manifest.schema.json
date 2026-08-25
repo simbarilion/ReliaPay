@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reliapay.local/contracts/course-1/action-manifest.schema.json",
+  "title": "ActionManifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "module",
+    "action",
+    "version",
+    "http_method",
+    "target_schema",
+    "target_function",
+    "request_schema",
+    "response_schema",
+    "outcomes",
+    "required_policy",
+    "idempotency_mode",
+    "idempotency_scope",
+    "timeout_ms"
+  ],
+  "properties": {
+    "module": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "action": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "http_method": {
+      "type": "string",
+      "const": "POST"
+    },
+    "target_schema": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target_function": {
+      "type": "string",
+      "minLength": 1
+    },
+    "request_schema": {
+      "type": "object"
+    },
+    "response_schema": {
+      "type": "object"
+    },
+    "outcomes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]*$"
+      }
+    },
+    "required_policy": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "idempotency_mode": {
+      "type": "string",
+      "enum": ["required", "none"]
+    },
+    "idempotency_scope": {
+      "type": "string",
+      "enum": ["principal_action", "none"]
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

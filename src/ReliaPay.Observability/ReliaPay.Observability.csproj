@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>ReliaPay.Observability</RootNamespace>
+    <AssemblyName>ReliaPay.Observability</AssemblyName>
+    <Description>Источники Activity и соглашения трассировки запросов ReliaPay.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ReliaPay.Contracts\ReliaPay.Contracts.csproj" />
+  </ItemGroup>
+</Project>
