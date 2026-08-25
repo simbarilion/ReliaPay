@@ -32,6 +32,23 @@ public sealed class PostgresConnectionFactory
     }
 
     /// <summary>
+    /// Открывает соединение роли runtime для вызова <c>api.invoke</c>. Вызывающая сторона обязана закрыть его.
+    /// </summary>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Открытое соединение.</returns>
+    public async Task<NpgsqlConnection> OpenRuntimeConnectionAsync(CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(_endpoints.RuntimePassword))
+        {
+            throw new InvalidOperationException("Environment variable COURSE_RUNTIME_PASSWORD is required.");
+        }
+
+        NpgsqlConnection connection = new(Build(PostgresRoles.Runtime, _endpoints.RuntimeUser, _endpoints.RuntimePassword));
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        return connection;
+    }
+
+    /// <summary>
     /// Собирает строку подключения через <see cref="NpgsqlConnectionStringBuilder"/>, чтобы не конкатенировать пароль вручную.
     /// </summary>
     /// <param name="applicationName">Имя приложения в pg_stat_activity.</param>
