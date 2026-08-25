@@ -1,5 +1,10 @@
 # ================================
-# Python / FastAPI
+# Local working notes
+# ================================
+.workspace/
+
+# ================================
+# Python / FastAPI (legacy scaffold)
 # ================================
 __pycache__/
 *.py[cod]
@@ -41,9 +46,35 @@ docker-compose.override.yml
 .idea/
 .vscode/
 *.iml
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
 
 # ================================
-# Temporary files
+# .NET
+# ================================
+bin/
+obj/
+artifacts/
+TestResults/
+*.coverage
+*.coveragexml
+project.lock.json
+*.nupkg
+*.snupkg
+
+# ================================
+# Course artifacts (must not be committed)
+# ================================
+week-1-public-report.json
+
+# ================================
+# Temporary files / OS
 # ================================
 tmp/
 temp/
+Thumbs.db
+Desktop.ini
+.DS_Store
