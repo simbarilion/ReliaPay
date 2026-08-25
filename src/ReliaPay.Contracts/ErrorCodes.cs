@@ -62,6 +62,11 @@ public static class ErrorCodes
     public const string InternalError = "internal.error";
 
     /// <summary>
+    /// Манифест не является JSON, не проходит schema или нарушает правила каталога.
+    /// </summary>
+    public const string ManifestInvalid = "manifest.invalid";
+
+    /// <summary>
     /// Опубликованная версия манифеста неизменяема, повтор с другим телом запрещён.
     /// </summary>
     public const string ManifestConflict = "manifest.conflict";

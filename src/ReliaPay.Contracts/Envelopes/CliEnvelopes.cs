@@ -15,13 +15,34 @@ public sealed record CliMeta(string ContractVersion);
 public sealed record CliSuccessEnvelope(string Status, CliSuccessResult Result, CliMeta Meta);
 
 /// <summary>
+/// Строка каталога в ответе <c>action list</c>.
+/// </summary>
+/// <param name="Module">Сегмент модуля.</param>
+/// <param name="Action">Сегмент действия.</param>
+/// <param name="Version">Версия манифеста.</param>
+/// <param name="Enabled">Версия доступна для invoke.</param>
+/// <param name="IsDefault">Версия выбирается без <c>X-Action-Version</c>.</param>
+public sealed record CliListedAction(
+    string Module,
+    string Action,
+    int Version,
+    bool Enabled,
+    bool IsDefault);
+
+/// <summary>
 /// Поле <c>result</c> успешного CLI-ответа.
 /// </summary>
 /// <param name="Resource">Тип ресурса, например <c>action</c> или <c>migration</c>.</param>
 /// <param name="Operation">Выполненная операция, например <c>published</c>.</param>
 /// <param name="Key">Ключ ресурса, например <c>payment.request</c>.</param>
 /// <param name="Version">Версия action, если применима.</param>
-public sealed record CliSuccessResult(string Resource, string Operation, string Key, int? Version);
+/// <param name="Items">Состав каталога; заполняется только для <c>action list</c>.</param>
+public sealed record CliSuccessResult(
+    string Resource,
+    string Operation,
+    string Key,
+    int? Version,
+    IReadOnlyList<CliListedAction>? Items = null);
 
 /// <summary>
 /// Ошибочный CLI-конверт. Пишется в stdout; диагностика допускается только в stderr.

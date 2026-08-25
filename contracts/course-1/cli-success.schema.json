@@ -15,7 +15,22 @@
         "resource": { "type": "string", "minLength": 1 },
         "operation": { "type": "string", "minLength": 1 },
         "key": { "type": "string", "minLength": 1 },
-        "version": { "type": ["integer", "null"], "minimum": 1 }
+        "version": { "type": ["integer", "null"], "minimum": 1 },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["module", "action", "version", "enabled", "isDefault"],
+            "properties": {
+              "module": { "type": "string", "minLength": 1 },
+              "action": { "type": "string", "minLength": 1 },
+              "version": { "type": "integer", "minimum": 1 },
+              "enabled": { "type": "boolean" },
+              "isDefault": { "type": "boolean" }
+            }
+          }
+        }
       }
     },
     "meta": {

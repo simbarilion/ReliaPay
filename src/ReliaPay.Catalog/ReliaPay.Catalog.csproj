@@ -7,5 +7,6 @@
   <ItemGroup>
     <ProjectReference Include="..\ReliaPay.Contracts\ReliaPay.Contracts.csproj" />
     <ProjectReference Include="..\ReliaPay.Data\ReliaPay.Data.csproj" />
+    <ProjectReference Include="..\ReliaPay.Json\ReliaPay.Json.csproj" />
   </ItemGroup>
 </Project>
