@@ -10,11 +10,11 @@
 
 ### Возможности
 
-- единственный внешний вход `http://127.0.0.1:8080`;
+- единственный внешний вход `http://localhost:8080` (`http://127.0.0.1:8080` — тот же шлюз);
 - тонкий gateway: whitelist маршрутов и прокси на внутренний api;
 - generic runtime: JWT, JSON Schema, каталог действий, `api.invoke`;
 - публикация actions манифестом через Course CLI без правки C#;
-- идемпотентность `payment.request` уникальным индексом PostgreSQL;
+- generic-идемпотентность в `api.invoke` до вызова target: replay того же payload и `409` при конфликте;
 - единый HTTP-конверт ошибок и успехов;
 - OpenAPI из каталога: default-документ и документ точной версии;
 - `correlationId` на каждый запрос и трассировка gateway → api;
@@ -34,7 +34,7 @@
 
 Интерактивный Swagger UI не публикуется. Контрактные документы:
 
-http://127.0.0.1:8080/openapi/default.json
+http://localhost:8080/openapi/default.json
 
 ## Решение
 
@@ -89,7 +89,7 @@ ReliaPay — это Database-first runtime, а не набор предметн�
     SELECT api.invoke(...)
             │
             │  PostgreSQL
-            │  policy, target, unique index
+            │  policy, generic idempotency, target
             ▼
     commit только если status=ok,
     outcome ∈ manifest, result валиден
@@ -191,12 +191,13 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Готовность: http://127.0.0.1:8080/health/ready возвращает 200.
+Готовность: http://localhost:8080/health/ready возвращает 200.
 
 Также доступны:
 
-- http://127.0.0.1:8080/health/live
-- http://127.0.0.1:8080/openapi/default.json
+- http://localhost:8080/health/live
+- http://localhost:8080/openapi/default.json
+- http://127.0.0.1:8080/health/ready
 
 Том PostgreSQL — `course_data`. Команда `docker compose down -v` удалит учебную базу.
 
@@ -367,7 +368,7 @@ Gateway не является «умным шлюзом»: авторизаци�
 
 ## Эндпойнты
 
-Все URL — через gateway `http://127.0.0.1:8080`.
+Все URL — через gateway `http://localhost:8080`.
 
 ### GET /health/live
 

@@ -11,19 +11,23 @@ public sealed class JsonDocumentValidatorTests
         JsonDocumentValidator validator = new();
         const string document = """
             {
+              "contract_version": "course-1",
               "module": "catalog",
               "action": "probe",
               "version": 1,
               "http_method": "POST",
               "target_schema": "app",
               "target_function": "catalog_probe",
-              "request_schema": { "type": "object" },
-              "response_schema": { "type": "object" },
+              "request_schema": true,
+              "response_schema": { "type": "object", "$defs": { "ok": { "type": "boolean" } } },
               "outcomes": ["PROBED"],
               "required_policy": [],
-              "idempotency_mode": "none",
-              "idempotency_scope": "none",
-              "timeout_ms": 1
+              "idempotency_mode": "optional",
+              "idempotency_scope": "principal_action",
+              "timeout_ms": 1,
+              "enabled": false,
+              "is_default": false,
+              "x-extra": 1
             }
             """;
 

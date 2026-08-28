@@ -1,4 +1,5 @@
 {
+  "contract_version": "course-1",
   "module": "catalog",
   "action": "probe",
   "version": 1,
@@ -15,5 +16,7 @@
   "required_policy": ["catalog:probe"],
   "idempotency_mode": "none",
   "idempotency_scope": "none",
-  "timeout_ms": 1000
+  "timeout_ms": 1000,
+  "enabled": false,
+  "is_default": false
 }

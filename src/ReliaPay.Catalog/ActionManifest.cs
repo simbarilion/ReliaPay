@@ -16,8 +16,8 @@ namespace ReliaPay.Catalog;
 /// <param name="ResponseSchema">JSON Schema поля result.</param>
 /// <param name="Outcomes">Допустимые outcome в верхнем регистре.</param>
 /// <param name="RequiredPolicy">Scopes, которые обязаны быть в доверенном context.</param>
-/// <param name="IdempotencyMode"><c>required</c> или <c>none</c>.</param>
-/// <param name="IdempotencyScope"><c>principal_action</c> или <c>none</c>.</param>
+/// <param name="IdempotencyMode">Режим идемпотентности: <c>required</c>, <c>optional</c>, <c>none</c> или иное значение опубликованного контракта.</param>
+/// <param name="IdempotencyScope">Область ключа: <c>principal_action</c>, <c>none</c> или иное значение контракта.</param>
 /// <param name="TimeoutMs">Лимит исполнения в миллисекундах.</param>
 /// <param name="Enabled">Операционный флаг: версия включена для вызова.</param>
 /// <param name="IsDefault">Операционный флаг: версия по умолчанию для маршрута.</param>

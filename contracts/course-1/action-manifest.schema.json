@@ -3,8 +3,8 @@
   "$id": "https://reliapay.local/contracts/course-1/action-manifest.schema.json",
   "title": "ActionManifest",
   "type": "object",
-  "additionalProperties": false,
   "required": [
+    "contract_version",
     "module",
     "action",
     "version",
@@ -17,9 +17,15 @@
     "required_policy",
     "idempotency_mode",
     "idempotency_scope",
-    "timeout_ms"
+    "timeout_ms",
+    "enabled",
+    "is_default"
   ],
   "properties": {
+    "contract_version": {
+      "type": "string",
+      "const": "course-1"
+    },
     "module": {
       "type": "string",
       "minLength": 1,
@@ -47,10 +53,16 @@
       "minLength": 1
     },
     "request_schema": {
-      "type": "object"
+      "anyOf": [
+        { "type": "object" },
+        { "type": "boolean" }
+      ]
     },
     "response_schema": {
-      "type": "object"
+      "anyOf": [
+        { "type": "object" },
+        { "type": "boolean" }
+      ]
     },
     "outcomes": {
       "type": "array",
@@ -70,15 +82,21 @@
     },
     "idempotency_mode": {
       "type": "string",
-      "enum": ["required", "none"]
+      "minLength": 1
     },
     "idempotency_scope": {
       "type": "string",
-      "enum": ["principal_action", "none"]
+      "minLength": 1
     },
     "timeout_ms": {
       "type": "integer",
       "minimum": 1
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "is_default": {
+      "type": "boolean"
     }
   }
 }

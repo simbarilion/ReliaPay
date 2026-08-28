@@ -100,7 +100,7 @@ public sealed class ActionExecutor
             return Fail(ErrorCodes.AccessDenied, "required policy is not satisfied", correlationId, manifest.Version);
         }
 
-        if (string.Equals(manifest.IdempotencyMode, "required", StringComparison.Ordinal)
+        if (RequiresIdempotencyKey(manifest.IdempotencyMode)
             && string.IsNullOrWhiteSpace(idempotencyKey))
         {
             return Fail(ErrorCodes.IdempotencyRequired, "Idempotency-Key is required", correlationId, manifest.Version);
@@ -287,6 +287,12 @@ public sealed class ActionExecutor
                 outcome,
                 resultClone,
                 new HttpResponseMeta(correlationId, manifest.Version)));
+    }
+
+    private static bool RequiresIdempotencyKey(string mode)
+    {
+        return !string.Equals(mode, "none", StringComparison.Ordinal)
+            && !string.Equals(mode, "optional", StringComparison.Ordinal);
     }
 
     private static InvokeContextDto ToInvokeContext(TrustedContext context)

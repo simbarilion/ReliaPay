@@ -154,7 +154,7 @@ Runtime коммитит транзакцию только на `ok` с допу
 
 ## Манифест action
 
-Схема: `action-manifest.schema.json`. Ключевые поля: `module`, `action`, `version`, `http_method=POST`, `target_schema`, `target_function`, `request_schema`, `response_schema`, `outcomes`, `required_policy`, `idempotency_mode`, `idempotency_scope`, `timeout_ms`.
+Схема: `action-manifest.schema.json`. Обязательные поля опубликованного course-1: `contract_version`, `module`, `action`, `version`, `http_method=POST`, `target_schema`, `target_function`, `request_schema`, `response_schema`, `outcomes`, `required_policy`, `idempotency_mode`, `idempotency_scope`, `timeout_ms`, `enabled`, `is_default`. Неизвестные свойства файла не делают манифест невалидным. `request_schema` / `response_schema` — JSON Schema Draft 2020-12 (объект или boolean). Publish записывает `enabled=false` и `is_default=false` независимо от файла.
 
 Опубликованная версия неизменяема. Повтор `action publish` с тем же телом безопасен. Другое тело той же версии — `manifest.conflict`.
 

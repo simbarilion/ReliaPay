@@ -29,6 +29,7 @@ public sealed class JwtAuthenticator
             ValidAudience = options.Audience,
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(keyBytes),
+            ValidAlgorithms = [SecurityAlgorithms.HmacSha256],
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromSeconds(30),
             RequireSignedTokens = true,

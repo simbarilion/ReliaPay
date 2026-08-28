@@ -1,4 +1,5 @@
 {
+  "contract_version": "course-1",
   "module": "operation",
   "action": "get",
   "version": 1,
@@ -30,5 +31,7 @@
   "required_policy": ["payment:read"],
   "idempotency_mode": "none",
   "idempotency_scope": "none",
-  "timeout_ms": 5000
+  "timeout_ms": 5000,
+  "enabled": false,
+  "is_default": false
 }
