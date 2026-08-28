@@ -28,7 +28,7 @@
 - не отдаёт клиенту выбор БД, schema, функции или SQL;
 - не хранит каталог действий в коде C#;
 - не дублирует идемпотентность блокировкой процесса;
-- не пишет JWT, секреты и полный payload в логи;
+- не пишет JWT, секреты, сырой Idempotency-Key и полный payload в логи;
 - не публикует на хост порты api, cli и PostgreSQL;
 - не реализует workflow, worker, Outbox и вызов внешнего платёжного провайдера.
 
@@ -201,7 +201,7 @@ docker compose up -d --build
 
 Том PostgreSQL — `course_data`. Команда `docker compose down -v` удалит учебную базу.
 
-На хост опубликован только порт `8080`. Порты PostgreSQL, api и cli наружу не пробрасываются. Внутри сети Compose используются адреса `postgres:5432` и `http://api:8080`.
+На хост опубликован только порт `8080` на `127.0.0.1`. Порты PostgreSQL, api и cli наружу не пробрасываются. Внутри сети Compose используются адреса `postgres:5432` и `http://api:8080`.
 
 ### Конфигурация
 
@@ -461,7 +461,7 @@ OpenAPI 3 только включённых default-маршрутов. Посл
 
 `retryable=true` только для `dependency.unavailable` и `action.timeout`.
 
-В технический журнал попадают метод, маршрут, HTTP-статус и `correlationId`. Текст payload, JWT и SQL не сохраняются.
+В технический журнал попадают метод, маршрут, HTTP-статус и `correlationId`. Текст payload, JWT, SQL и сырой `Idempotency-Key` не сохраняются: для ключа пишется только SHA-256.
 
 ## Course CLI
 

@@ -39,6 +39,10 @@ public sealed class Program
     /// <param name="builder">Построитель веб-приложения api.</param>
     private static void ConfigureServices(WebApplicationBuilder builder)
     {
+        builder.WebHost.ConfigureKestrel(static options =>
+        {
+            options.Limits.MaxRequestBodySize = CourseHttpLimits.MaxRequestBodyBytes;
+        });
         builder.AddReliaPayTracing("ReliaPay.Api", mintCorrelationId: false);
         builder.Services.ConfigureHttpJsonOptions(static options =>
         {
@@ -207,10 +211,19 @@ public sealed class Program
             idempotencyKey = null;
         }
 
-        string payloadJson;
-        using (StreamReader reader = new(httpContext.Request.Body))
+        string? payloadJson = await BoundedJsonBody
+            .ReadAsync(httpContext.Request.Body, httpContext.Request.ContentLength, cancellationToken)
+            .ConfigureAwait(false);
+        if (payloadJson is null)
         {
-            payloadJson = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+            return ApiJson.Error(
+                StatusCodes.Status400BadRequest,
+                HttpErrorEnvelope.Create(
+                    ErrorCodes.RequestInvalid,
+                    "request body is too large",
+                    retryable: false,
+                    correlationId: correlationId,
+                    actionVersion: null));
         }
 
         ActionHttpResult result = await executor

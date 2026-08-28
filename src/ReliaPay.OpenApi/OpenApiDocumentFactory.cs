@@ -21,7 +21,7 @@ public sealed class OpenApiDocumentFactory
         JsonObject paths = [];
         foreach (ActionManifest manifest in defaults)
         {
-            paths[$"/api/{manifest.Module}/{manifest.Action}"] = CreatePathItem(manifest);
+            paths[$"/api/{manifest.Module}/{manifest.Action}"] = CreatePathItem(manifest, exactVersion: false);
         }
 
         return CreateDocument("ReliaPay default actions", paths);
@@ -37,7 +37,7 @@ public sealed class OpenApiDocumentFactory
         ArgumentNullException.ThrowIfNull(manifest);
         JsonObject paths = new()
         {
-            [$"/api/{manifest.Module}/{manifest.Action}"] = CreatePathItem(manifest),
+            [$"/api/{manifest.Module}/{manifest.Action}"] = CreatePathItem(manifest, exactVersion: true),
         };
         return CreateDocument($"ReliaPay {manifest.RouteKey} v{manifest.Version}", paths);
     }
@@ -56,10 +56,69 @@ public sealed class OpenApiDocumentFactory
         };
     }
 
-    private static JsonObject CreatePathItem(ActionManifest manifest)
+    private static JsonObject CreatePathItem(ActionManifest manifest, bool exactVersion)
     {
         JsonNode requestSchema = JsonNode.Parse(manifest.RequestSchema.GetRawText()) ?? new JsonObject();
-        JsonNode responseSchema = JsonNode.Parse(manifest.ResponseSchema.GetRawText()) ?? new JsonObject();
+        JsonObject versionSchema = exactVersion
+            ? new JsonObject
+            {
+                ["type"] = "integer",
+                ["const"] = manifest.Version,
+            }
+            : new JsonObject
+            {
+                ["type"] = "integer",
+                ["minimum"] = 1,
+            };
+        JsonObject actionVersionSchema = exactVersion
+            ? new JsonObject
+            {
+                ["type"] = "integer",
+                ["const"] = manifest.Version,
+            }
+            : new JsonObject
+            {
+                ["type"] = "integer",
+                ["minimum"] = 1,
+            };
+        JsonArray outcomes = [];
+        foreach (string outcome in manifest.Outcomes)
+        {
+            outcomes.Add(outcome);
+        }
+
+        JsonObject envelope = new()
+        {
+            ["type"] = "object",
+            ["additionalProperties"] = false,
+            ["required"] = new JsonArray("status", "outcome", "result", "meta"),
+            ["properties"] = new JsonObject
+            {
+                ["status"] = new JsonObject { ["type"] = "string", ["const"] = "ok" },
+                ["outcome"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["enum"] = outcomes,
+                },
+                ["result"] = JsonNode.Parse(manifest.ResponseSchema.GetRawText()) ?? new JsonObject(),
+                ["meta"] = new JsonObject
+                {
+                    ["type"] = "object",
+                    ["additionalProperties"] = false,
+                    ["required"] = new JsonArray("correlationId", "actionVersion"),
+                    ["properties"] = new JsonObject
+                    {
+                        ["correlationId"] = new JsonObject
+                        {
+                            ["type"] = "string",
+                            ["format"] = "uuid",
+                        },
+                        ["actionVersion"] = actionVersionSchema,
+                    },
+                },
+            },
+        };
+
         return new JsonObject
         {
             ["post"] = new JsonObject
@@ -71,8 +130,8 @@ public sealed class OpenApiDocumentFactory
                     {
                         ["name"] = "X-Action-Version",
                         ["in"] = "header",
-                        ["required"] = false,
-                        ["schema"] = new JsonObject { ["type"] = "integer", ["minimum"] = 1 },
+                        ["required"] = exactVersion,
+                        ["schema"] = versionSchema,
                     },
                     new JsonObject
                     {
@@ -97,7 +156,7 @@ public sealed class OpenApiDocumentFactory
                         ["description"] = "Action succeeded",
                         ["content"] = new JsonObject
                         {
-                            ["application/json"] = new JsonObject { ["schema"] = responseSchema },
+                            ["application/json"] = new JsonObject { ["schema"] = envelope },
                         },
                     },
                 },

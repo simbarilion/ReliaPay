@@ -81,6 +81,23 @@ public sealed class GatewayProxyTests
     }
 
     [Fact]
+    public async Task Maps_proxy_timeout_to_action_timeout_not_dependency_unavailable()
+    {
+        RecordingHandler handler = new()
+        {
+            Throw = new TaskCanceledException("request timed out"),
+        };
+        DefaultHttpContext context = CreateContext("POST", "/api/payment/request", "{}");
+
+        await CreateProxy(handler).ProxyAsync(context, CancellationToken.None);
+
+        context.Response.StatusCode.Should().Be(StatusCodes.Status504GatewayTimeout);
+        using JsonDocument document = JsonDocument.Parse(ReadBody(context));
+        document.RootElement.GetProperty("code").GetString().Should().Be(ErrorCodes.ActionTimeout);
+        document.RootElement.GetProperty("retryable").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
     public async Task Forwards_openapi_get_without_request_body()
     {
         RecordingHandler handler = new()

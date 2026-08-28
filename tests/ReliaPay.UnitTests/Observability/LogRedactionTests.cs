@@ -20,11 +20,17 @@ public sealed class LogRedactionTests
     [Theory]
     [InlineData("Content-Type", "application/json")]
     [InlineData("X-Action-Version", "1")]
-    [InlineData("Idempotency-Key", "key-1")]
     public void Keeps_non_secret_headers(string name, string value)
     {
         LogRedaction.IsSensitiveHeader(name).Should().BeFalse();
         LogRedaction.RedactHeader(name, value).Should().Be(value);
+    }
+
+    [Fact]
+    public void Redacts_idempotency_key_header()
+    {
+        LogRedaction.IsSensitiveHeader("Idempotency-Key").Should().BeTrue();
+        LogRedaction.RedactHeader("Idempotency-Key", "key-1").Should().Be("[redacted]");
     }
 
     [Fact]

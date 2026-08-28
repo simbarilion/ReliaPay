@@ -95,7 +95,7 @@ public sealed class GatewayProxy
         }
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            await WriteDependencyUnavailableAsync(context, cancellationToken).ConfigureAwait(false);
+            await WriteActionTimeoutAsync(context, cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -153,6 +153,22 @@ public sealed class GatewayProxy
     private static bool ShouldSendBody(HttpRequest request)
     {
         return !HttpMethods.IsGet(request.Method) && !HttpMethods.IsHead(request.Method);
+    }
+
+    /// <summary>
+    /// 504, когда api не успел ответить в бюджете шлюза. Не подменяет недоступность зависимости.
+    /// </summary>
+    private static Task WriteActionTimeoutAsync(HttpContext context, CancellationToken cancellationToken)
+    {
+        Guid? correlationId = ReliaPayTraceHttp.Get(context)?.CorrelationId;
+        HttpErrorEnvelope envelope = HttpErrorEnvelope.Create(
+            ErrorCodes.ActionTimeout,
+            "action timed out",
+            retryable: true,
+            correlationId: correlationId,
+            actionVersion: null);
+        context.Response.StatusCode = StatusCodes.Status504GatewayTimeout;
+        return context.Response.WriteAsJsonAsync(envelope, ResponseJsonOptions, cancellationToken);
     }
 
     /// <summary>

@@ -16,7 +16,8 @@ public sealed class RequestTraceFactoryTests
             mintCorrelationId: true);
         trace.CorrelationId.Should().NotBe(incoming);
         trace.CorrelationId.Should().NotBe(Guid.Empty);
-        trace.RequestId.Should().Be("key-1");
+        trace.RequestId.Should().NotBe("key-1");
+        trace.RequestId.Should().Be(RequestIdHash.Sha256Hex("key-1"));
         trace.Module.Should().Be("payment");
         trace.Action.Should().Be("request");
         trace.Route.Should().Be("/api/payment/request");

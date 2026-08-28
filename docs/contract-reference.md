@@ -68,7 +68,7 @@ Health шлюза:
 }
 ```
 
-`requestId` равен заголовку `Idempotency-Key`, если он передан, иначе `null`. `deadline` считается из `timeout_ms` манифеста.
+`requestId` равен заголовку `Idempotency-Key`, если он передан, иначе `null`. `deadline` считается из `timeout_ms` манифеста. `timeout_ms` — целое от 1 до 30000. Шлюз ждёт ответ api 35 секунд, чтобы успеть отдать `action.timeout`, а не `dependency.unavailable`.
 
 ## HTTP-конверты
 

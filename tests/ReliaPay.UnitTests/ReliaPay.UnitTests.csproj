@@ -31,5 +31,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\README.md" CopyToOutputDirectory="PreserveNewest" Link="README.md" />
+    <None Include="..\..\db\manifests\payment.request.v1.json" CopyToOutputDirectory="PreserveNewest" Link="payment.request.v1.json" />
   </ItemGroup>
 </Project>

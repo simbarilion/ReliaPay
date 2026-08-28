@@ -39,6 +39,10 @@ public sealed class Program
     /// <param name="builder">Построитель веб-приложения шлюза.</param>
     private static void ConfigureServices(WebApplicationBuilder builder)
     {
+        builder.WebHost.ConfigureKestrel(static options =>
+        {
+            options.Limits.MaxRequestBodySize = CourseHttpLimits.MaxRequestBodyBytes;
+        });
         builder.AddReliaPayTracing("ReliaPay.Gateway", mintCorrelationId: true);
         builder.Services.AddSingleton(CreateGatewayOptions(builder.Configuration));
         builder.Services.AddSingleton<GatewayRouteWhitelist>();
@@ -48,7 +52,7 @@ public sealed class Program
         });
         builder.Services.AddHttpClient<GatewayProxy>(static client =>
         {
-            client.Timeout = TimeSpan.FromSeconds(30);
+            client.Timeout = TimeSpan.FromSeconds(CourseHttpLimits.GatewayHttpTimeoutSeconds);
         });
         builder.Services.ConfigureHttpJsonOptions(static options =>
         {

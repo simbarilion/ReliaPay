@@ -169,17 +169,19 @@ public sealed class ActionExecutor
             command.Parameters.AddWithValue("payload", payloadJson);
             object? scalar = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
             string json = scalar as string ?? Convert.ToString(scalar) ?? "{}";
-            return await CompleteInvokeAsync(manifest, context.CorrelationId, json, transaction, cancellationToken)
+            return await CompleteInvokeAsync(manifest, context, json, transaction, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!httpCancellation.IsCancellationRequested)
         {
             await TryRollbackAsync(transaction).ConfigureAwait(false);
+            await PersistErrorDispatchAsync(manifest, context, cancellationToken).ConfigureAwait(false);
             return Fail(ErrorCodes.ActionTimeout, "action timed out", context.CorrelationId, manifest.Version);
         }
         catch (PostgresException exception) when (exception.SqlState == "57014")
         {
             await TryRollbackAsync(transaction).ConfigureAwait(false);
+            await PersistErrorDispatchAsync(manifest, context, cancellationToken).ConfigureAwait(false);
             return Fail(ErrorCodes.ActionTimeout, "action timed out", context.CorrelationId, manifest.Version);
         }
         catch (PostgresUnavailableException)
@@ -192,6 +194,7 @@ public sealed class ActionExecutor
             await TryRollbackAsync(transaction).ConfigureAwait(false);
             if (exception is PostgresException)
             {
+                await PersistErrorDispatchAsync(manifest, context, cancellationToken).ConfigureAwait(false);
                 return Fail(ErrorCodes.InternalError, "action failed", context.CorrelationId, manifest.Version);
             }
 
@@ -200,6 +203,7 @@ public sealed class ActionExecutor
         catch (InvalidOperationException)
         {
             await TryRollbackAsync(transaction).ConfigureAwait(false);
+            await PersistErrorDispatchAsync(manifest, context, cancellationToken).ConfigureAwait(false);
             return Fail(ErrorCodes.InternalError, "action failed", context.CorrelationId, manifest.Version);
         }
         finally
@@ -218,7 +222,7 @@ public sealed class ActionExecutor
 
     private async Task<ActionHttpResult> CompleteInvokeAsync(
         ActionManifest manifest,
-        Guid correlationId,
+        TrustedContext context,
         string invokeJson,
         NpgsqlTransaction transaction,
         CancellationToken cancellationToken)
@@ -232,13 +236,14 @@ public sealed class ActionExecutor
         if (string.Equals(status, "error", StringComparison.Ordinal))
         {
             await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            await PersistErrorDispatchAsync(manifest, context, cancellationToken).ConfigureAwait(false);
             string code = root.TryGetProperty("code", out JsonElement codeElement)
                 ? codeElement.GetString() ?? ErrorCodes.InternalError
                 : ErrorCodes.InternalError;
             string message = root.TryGetProperty("message", out JsonElement messageElement)
                 ? messageElement.GetString() ?? "action failed"
                 : "action failed";
-            return Fail(code, SanitizeMessage(code, message), correlationId, manifest.Version);
+            return Fail(code, SanitizeMessage(code, message), context.CorrelationId, manifest.Version);
         }
 
         if (!string.Equals(status, "ok", StringComparison.Ordinal)
@@ -248,10 +253,11 @@ public sealed class ActionExecutor
             || resultElement.ValueKind != JsonValueKind.Object)
         {
             await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            await PersistErrorDispatchAsync(manifest, context, cancellationToken).ConfigureAwait(false);
             return Fail(
                 ErrorCodes.ActionContractViolation,
                 "action result does not match contract",
-                correlationId,
+                context.CorrelationId,
                 manifest.Version);
         }
 
@@ -259,10 +265,11 @@ public sealed class ActionExecutor
         if (!manifest.Outcomes.Contains(outcome, StringComparer.Ordinal))
         {
             await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            await PersistErrorDispatchAsync(manifest, context, cancellationToken).ConfigureAwait(false);
             return Fail(
                 ErrorCodes.ActionContractViolation,
                 "action result does not match contract",
-                correlationId,
+                context.CorrelationId,
                 manifest.Version);
         }
 
@@ -272,10 +279,11 @@ public sealed class ActionExecutor
         if (!resultCheck.IsValid)
         {
             await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            await PersistErrorDispatchAsync(manifest, context, cancellationToken).ConfigureAwait(false);
             return Fail(
                 ErrorCodes.ActionContractViolation,
                 "action result does not match contract",
-                correlationId,
+                context.CorrelationId,
                 manifest.Version);
         }
 
@@ -286,7 +294,33 @@ public sealed class ActionExecutor
                 "ok",
                 outcome,
                 resultClone,
-                new HttpResponseMeta(correlationId, manifest.Version)));
+                new HttpResponseMeta(context.CorrelationId, manifest.Version)));
+    }
+
+    private async Task PersistErrorDispatchAsync(
+        ActionManifest manifest,
+        TrustedContext context,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using NpgsqlConnection connection = await _connections
+                .OpenRuntimeConnectionAsync(cancellationToken)
+                .ConfigureAwait(false);
+            await using NpgsqlCommand command = new(
+                "SELECT api.record_error_dispatch(@context::jsonb, @module, @action, @version)",
+                connection);
+            command.Parameters.AddWithValue(
+                "context",
+                JsonSerializer.Serialize(ToInvokeContext(context), ContextJsonOptions));
+            command.Parameters.AddWithValue("module", manifest.Module);
+            command.Parameters.AddWithValue("action", manifest.Action);
+            command.Parameters.AddWithValue("version", manifest.Version);
+            await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+        }
     }
 
     private static bool RequiresIdempotencyKey(string mode)

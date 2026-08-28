@@ -21,6 +21,7 @@ public static class LogRedaction
             || name.Equals("Cookie", StringComparison.OrdinalIgnoreCase)
             || name.Equals("Set-Cookie", StringComparison.OrdinalIgnoreCase)
             || name.Equals("X-Api-Key", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("Idempotency-Key", StringComparison.OrdinalIgnoreCase)
             || name.Contains("password", StringComparison.OrdinalIgnoreCase)
             || name.Contains("secret", StringComparison.OrdinalIgnoreCase)
             || name.Contains("signing", StringComparison.OrdinalIgnoreCase);

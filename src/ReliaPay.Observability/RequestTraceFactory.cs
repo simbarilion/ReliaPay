@@ -29,7 +29,7 @@ public static class RequestTraceFactory
             : TryParseCorrelationId(incomingCorrelationId) ?? Guid.NewGuid();
         string route = NormalizeRoute(path);
         TryParseModuleAction(route, out string? module, out string? action);
-        string? requestId = string.IsNullOrWhiteSpace(idempotencyKey) ? null : idempotencyKey.Trim();
+        string? requestId = RequestIdHash.Sha256Hex(idempotencyKey);
         return new RequestTrace(correlationId, requestId, route, module, action);
     }
 

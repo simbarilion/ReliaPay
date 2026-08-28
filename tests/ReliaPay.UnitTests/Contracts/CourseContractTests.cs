@@ -58,4 +58,12 @@ public sealed class CourseContractTests
         context.CorrelationId.Should().Be(correlationId);
         context.RequestId.Should().Be("request-123");
     }
+
+    [Fact]
+    public void Http_limits_keep_gateway_budget_above_manifest_timeout()
+    {
+        CourseHttpLimits.MaxTimeoutMs.Should().Be(30_000);
+        CourseHttpLimits.GatewayHttpTimeoutSeconds.Should().BeGreaterThan(CourseHttpLimits.MaxTimeoutMs / 1000);
+        CourseHttpLimits.MaxRequestBodyBytes.Should().Be(64 * 1024);
+    }
 }

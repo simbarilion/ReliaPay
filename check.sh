@@ -33,7 +33,7 @@ if [ -z "${COURSE_JWT_SIGNING_KEY:-}" ]; then
   exit 1
 fi
 
-SDK_IMAGE="${COURSE_SDK_IMAGE:-mcr.microsoft.com/dotnet/sdk:10.0}"
+SDK_IMAGE="${COURSE_SDK_IMAGE:-mcr.microsoft.com/dotnet/sdk:10.0@sha256:e1ffd2a92ae84c1291bc1b6887501f8af98e6331e7af6d4c8d37168c5e87a64c}"
 GATEWAY_URL_HOST="${COURSE_GATEWAY_HOST_URL:-http://127.0.0.1:8080}"
 
 wait_http() {

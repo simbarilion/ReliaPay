@@ -34,7 +34,8 @@ public sealed class ReliaPayTraceMiddlewareTests
         trace.Should().NotBeNull();
         trace!.Module.Should().Be("payment");
         trace.Action.Should().Be("request");
-        trace.RequestId.Should().Be("key-9");
+        trace.RequestId.Should().Be(RequestIdHash.Sha256Hex("key-9"));
+        trace.RequestId.Should().NotBe("key-9");
         string logText = string.Join('\n', logger.Messages);
         logText.Should().Contain("/api/payment/request");
         logText.Should().Contain("200");
@@ -42,6 +43,7 @@ public sealed class ReliaPayTraceMiddlewareTests
         logText.Should().NotContain("super-secret-jwt-token");
         logText.Should().NotContain("Bearer");
         logText.Should().NotContain("10.00");
+        logText.Should().NotContain("key-9");
     }
 
     [Fact]

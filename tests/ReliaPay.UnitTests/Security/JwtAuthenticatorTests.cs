@@ -36,6 +36,20 @@ public sealed class JwtAuthenticatorTests
         principal.IsAuthenticated.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task Rejects_token_signed_with_hs384()
+    {
+        string payload =
+            """{"sub":"candidate-client","consumer":"web","scope":"payment:write","iat":1710000000,"exp":4102444800,"iss":"moduledev-course","aud":"moduledev-api"}""";
+        string header = Base64Url(Encoding.UTF8.GetBytes("""{"alg":"HS384","typ":"JWT"}"""));
+        string body = Base64Url(Encoding.UTF8.GetBytes(payload));
+        string signingInput = header + "." + body;
+        using HMACSHA384 hmac = new(Encoding.UTF8.GetBytes(SigningKey));
+        string token = signingInput + "." + Base64Url(hmac.ComputeHash(Encoding.UTF8.GetBytes(signingInput)));
+        JwtPrincipal principal = await _authenticator.AuthenticateAsync("Bearer " + token);
+        principal.IsAuthenticated.Should().BeFalse();
+    }
+
     private static string Sign(string payloadJson)
     {
         string header = Base64Url(Encoding.UTF8.GetBytes("""{"alg":"HS256","typ":"JWT"}"""));
