@@ -10,5 +10,20 @@ public sealed class ReadmeAdmissionTests
         string readme = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "README.md"));
         readme.Should().Contain("http://localhost:8080");
         readme.Should().Contain("http://localhost:8080/health/ready");
+        readme.Should().Contain("docker compose up -d --build");
+        readme.Should().Contain("./check.sh");
+    }
+
+    [Fact]
+    public void Readme_declares_week_two_solution_headings()
+    {
+        string readme = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "README.md"));
+        readme.Should().Contain("### Архитектура");
+        readme.Should().Contain("### Запуск");
+        readme.Should().Contain("### Workflow-карты");
+        readme.Should().Contain("### Worker");
+        readme.Should().Contain("### Проверка");
+        readme.Should().Contain("### Диагностика");
+        readme.Should().Contain("### Ограничения");
     }
 }

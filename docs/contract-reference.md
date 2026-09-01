@@ -120,6 +120,9 @@ Health шлюза:
 | `action.timeout` | 504 | да | истёк `timeout_ms` |
 | `action.contract_violation` | 500 | нет | outcome/result вне манифеста |
 | `internal.error` | 500 | нет | прочее без утечки SQL и stack |
+| `workflow.mapping_missing` | — | нет | нет JSON Pointer в process data; action не вызывается |
+| `workflow.lease_stale` | — | нет | finish/fail с чужим owner или `leaseVersion` |
+| `workflow.conflict` | — | нет | конфликт идемпотентности process/сигнала или неизменяемой карты |
 
 Сообщения не содержат JWT, полного payload, имён внутренних хостов и stack trace.
 
@@ -174,11 +177,20 @@ action publish <manifest>
 action list
 action activate <module.action> --version <version>
 action disable <module.action> --version <version> [--replacement-version <version>]
+flow validate <map>
+flow publish <map>
+flow list
+flow activate <name> --version <version>
+flow start <name> --business-key <key> --data <file>
+flow get <processId>
+flow signal <processId> --type <type> --message-id <id> --payload <file>
 ```
 
 ## autocheck
 
-Пять read-only views: `contract_info`, `action_definitions`, `action_dispatches`, `operations`, `operation_events`.
+Read-only views недели 1: `contract_info`, `action_definitions`, `action_dispatches`, `operations`, `operation_events`.
+
+Неделя 2 добавляет: `flow_versions`, `processes`, `steps`, `jobs`, `attempts`, `signals`, `workflow_events`.
 
 `autocheck.contract_info.contract_version` = `course-1`.  
 `action_dispatches.status` ∈ `OK`, `ERROR`.  
