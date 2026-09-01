@@ -45,6 +45,22 @@ public sealed class TrainingCanaryTests
         v2.Should().Contain("\"version\": 2");
         v2.Should().Contain("\"timeout_ms\": 2500");
         v2.Should().Contain("\"action_version\": 1");
+
+        string manual = ReadRepoFile("db", "maps", "workflow-manual.v1.json");
+        manual.Should().Contain("\"flow_name\": \"workflow-manual\"");
+        manual.Should().Contain("\"type\": \"manual\"");
+        manual.Should().Contain("\"start_step\": \"review\"");
+        manual.Should().Contain("\"allowed_outcomes\"");
+    }
+
+    [Fact]
+    public void Canary_keeps_first_effect_on_execution_id_conflict()
+    {
+        string sql = ReadRepoFile("db", "migrations", "20260826170000_keep_first_pending_signal_manual.sql");
+        sql.Should().Contain("CREATE OR REPLACE FUNCTION app.training_canary(");
+        sql.Should().Contain("ON CONFLICT (execution_id) DO NOTHING");
+        sql.Should().NotContain("ON CONFLICT (execution_id) DO UPDATE");
+        sql.Should().Contain("SELECT value INTO v_stored");
     }
 
     private static string ReadRepoFile(params string[] parts)

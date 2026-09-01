@@ -1,0 +1,25 @@
+{
+  "contract_version": "course-1",
+  "flow_name": "workflow-manual",
+  "version": 1,
+  "start_step": "review",
+  "steps": [
+    {
+      "key": "review",
+      "type": "manual",
+      "allowed_outcomes": ["APPROVED"]
+    },
+    {
+      "key": "done",
+      "type": "end",
+      "outcome": "COMPLETED"
+    }
+  ],
+  "transitions": [
+    {
+      "from": "review",
+      "outcome": "APPROVED",
+      "to": "done"
+    }
+  ]
+}

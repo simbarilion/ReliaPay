@@ -317,7 +317,7 @@ docker compose run --rm --no-deps -T \
   cli flow signal <processId> --type training.completed --message-id msg-1 --payload /data/signal.json
 ```
 
-Встроенные миграции уже публикуют `training.canary` и `workflow-smoke` v1 (активна) / v2. Файлы: `db/manifests/training.canary.v1.json`, `db/maps/workflow-smoke.v1.json`, `db/maps/workflow-smoke.v2.json`.
+Встроенные миграции уже публикуют `training.canary`, `workflow-smoke` v1 (активна) / v2 и `workflow-manual` v1 (старт сразу в `WAITING_MANUAL`). Файлы: `db/manifests/training.canary.v1.json`, `db/maps/workflow-smoke.v1.json`, `db/maps/workflow-smoke.v2.json`, `db/maps/workflow-manual.v1.json`.
 
 Состояние process читается и по HTTP: `POST /api/workflow/get` с правом `workflow:read`.
 

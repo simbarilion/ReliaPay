@@ -89,6 +89,22 @@ public sealed class WorkflowFunctionsTests
         insert.Should().BeGreaterThan(typeCheck);
     }
 
+    [Fact]
+    public void Additive_hardening_keeps_pending_signal_fields_and_manual_map()
+    {
+        string sql = ReadMigration("20260826170000_keep_first_pending_signal_manual.sql");
+
+        sql.Should().Contain("'PENDING'");
+        sql.Should().Contain("step_instances_state_chk");
+        sql.Should().Contain("'processId', p_process_id");
+        sql.Should().Contain("'signalType', p_type");
+        sql.Should().Contain("CREATE OR REPLACE FUNCTION workflow.signal_process(");
+        sql.Should().Contain("AND signal_type = p_type");
+        sql.Should().Contain("\"flow_name\": \"workflow-manual\"");
+        sql.Should().Contain("workflow.activate_flow('workflow-manual', 1)");
+        sql.Should().Contain("GRANT EXECUTE ON FUNCTION workflow.signal_process(uuid, text, text, jsonb) TO course_publication");
+    }
+
     private static string ReadMigration(string fileName)
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);

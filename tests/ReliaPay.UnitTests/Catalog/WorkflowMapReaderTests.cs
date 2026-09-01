@@ -248,6 +248,18 @@ public sealed class WorkflowMapReaderTests
     }
 
     [Fact]
+    public async Task Bundled_manual_wait_map_passes_schema_and_semantics()
+    {
+        string json = ReadRepoFile("db", "maps", "workflow-manual.v1.json");
+        WorkflowMapReadResult read = Reader.Read(json);
+        read.IsSuccess.Should().BeTrue();
+        read.Map!.FlowName.Should().Be("workflow-manual");
+        read.Map.StartStep.Should().Be("review");
+        read.Map.Steps.Should().Contain(step => step.Type == "manual");
+        (await Semantics.ValidateAsync(read.Map, Catalog, CancellationToken.None)).Should().BeNull();
+    }
+
+    [Fact]
     public async Task Retry_delay_length_must_match_max_attempts()
     {
         string json = ValidMap().Replace("\"delays_ms\": [200, 400]", "\"delays_ms\": [200]");
@@ -297,6 +309,23 @@ public sealed class WorkflowMapReaderTests
               ]
             }
             """;
+    }
+
+    private static string ReadRepoFile(params string[] parts)
+    {
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            string candidate = Path.Combine(new[] { directory.FullName }.Concat(parts).ToArray());
+            if (File.Exists(candidate))
+            {
+                return File.ReadAllText(candidate);
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new InvalidOperationException($"Repository file {string.Join('/', parts)} was not found.");
     }
 }
 
