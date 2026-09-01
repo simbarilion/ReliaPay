@@ -16,6 +16,8 @@ public sealed class PostgresEndpoints
     /// <param name="publicationPassword">Пароль роли CLI.</param>
     /// <param name="runtimeUser">Роль HTTP runtime.</param>
     /// <param name="runtimePassword">Пароль роли runtime.</param>
+    /// <param name="workerUser">Роль generic worker.</param>
+    /// <param name="workerPassword">Пароль роли worker.</param>
     public PostgresEndpoints(
         string host,
         int port,
@@ -23,7 +25,9 @@ public sealed class PostgresEndpoints
         string publicationUser,
         string publicationPassword,
         string runtimeUser,
-        string runtimePassword)
+        string runtimePassword,
+        string? workerUser = null,
+        string? workerPassword = null)
     {
         Host = host;
         Port = port;
@@ -32,6 +36,8 @@ public sealed class PostgresEndpoints
         PublicationPassword = publicationPassword;
         RuntimeUser = runtimeUser;
         RuntimePassword = runtimePassword;
+        WorkerUser = string.IsNullOrWhiteSpace(workerUser) ? PostgresRoles.Worker : workerUser;
+        WorkerPassword = workerPassword ?? string.Empty;
     }
 
     /// <summary>Имя или адрес сервера PostgreSQL.</summary>
@@ -55,6 +61,12 @@ public sealed class PostgresEndpoints
     /// <summary>Пароль роли runtime. Не логировать.</summary>
     public string RuntimePassword { get; }
 
+    /// <summary>Имя роли worker.</summary>
+    public string WorkerUser { get; }
+
+    /// <summary>Пароль роли worker. Не логировать.</summary>
+    public string WorkerPassword { get; }
+
     /// <summary>
     /// Читает параметры CLI: host и обе прикладные роли.
     /// </summary>
@@ -69,7 +81,9 @@ public sealed class PostgresEndpoints
             publicationUser: ReadRequired("COURSE_PUBLICATION_USER"),
             publicationPassword: ReadRequired("COURSE_PUBLICATION_PASSWORD"),
             runtimeUser: Environment.GetEnvironmentVariable("COURSE_RUNTIME_USER") ?? PostgresRoles.Runtime,
-            runtimePassword: Environment.GetEnvironmentVariable("COURSE_RUNTIME_PASSWORD") ?? string.Empty);
+            runtimePassword: Environment.GetEnvironmentVariable("COURSE_RUNTIME_PASSWORD") ?? string.Empty,
+            workerUser: Environment.GetEnvironmentVariable("COURSE_WORKER_USER") ?? PostgresRoles.Worker,
+            workerPassword: Environment.GetEnvironmentVariable("COURSE_WORKER_PASSWORD") ?? string.Empty);
     }
 
     /// <summary>
@@ -87,6 +101,23 @@ public sealed class PostgresEndpoints
             publicationPassword: Environment.GetEnvironmentVariable("COURSE_PUBLICATION_PASSWORD") ?? string.Empty,
             runtimeUser: Environment.GetEnvironmentVariable("COURSE_RUNTIME_USER") ?? PostgresRoles.Runtime,
             runtimePassword: ReadRequired("COURSE_RUNTIME_PASSWORD"));
+    }
+
+    /// <summary>
+    /// Читает параметры generic worker. Publication-пароль worker не использует.
+    /// </summary>
+    public static PostgresEndpoints FromWorkerEnvironment()
+    {
+        return new PostgresEndpoints(
+            host: ReadRequired("COURSE_DB_HOST"),
+            port: ReadPort("COURSE_DB_PORT"),
+            database: ReadRequired("COURSE_DB_NAME"),
+            publicationUser: Environment.GetEnvironmentVariable("COURSE_PUBLICATION_USER") ?? PostgresRoles.Publication,
+            publicationPassword: Environment.GetEnvironmentVariable("COURSE_PUBLICATION_PASSWORD") ?? string.Empty,
+            runtimeUser: Environment.GetEnvironmentVariable("COURSE_RUNTIME_USER") ?? PostgresRoles.Runtime,
+            runtimePassword: Environment.GetEnvironmentVariable("COURSE_RUNTIME_PASSWORD") ?? string.Empty,
+            workerUser: Environment.GetEnvironmentVariable("COURSE_WORKER_USER") ?? PostgresRoles.Worker,
+            workerPassword: ReadRequired("COURSE_WORKER_PASSWORD"));
     }
 
     /// <summary>

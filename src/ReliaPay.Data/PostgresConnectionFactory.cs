@@ -3,7 +3,7 @@ using Npgsql;
 namespace ReliaPay.Data;
 
 /// <summary>
-/// Собирает Npgsql-строки подключения для publication и runtime без печати секретов.
+/// Собирает Npgsql-строки подключения для publication, runtime и worker без печати секретов.
 /// </summary>
 public sealed class PostgresConnectionFactory
 {
@@ -44,6 +44,21 @@ public sealed class PostgresConnectionFactory
         }
 
         NpgsqlConnection connection = new(Build(PostgresRoles.Runtime, _endpoints.RuntimeUser, _endpoints.RuntimePassword));
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        return connection;
+    }
+
+    /// <summary>
+    /// Открывает соединение роли <c>workflow_worker</c> для claim/invoke/finish/fail.
+    /// </summary>
+    public async Task<NpgsqlConnection> OpenWorkerConnectionAsync(CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(_endpoints.WorkerPassword))
+        {
+            throw new InvalidOperationException("Environment variable COURSE_WORKER_PASSWORD is required.");
+        }
+
+        NpgsqlConnection connection = new(Build(PostgresRoles.Worker, _endpoints.WorkerUser, _endpoints.WorkerPassword));
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
         return connection;
     }

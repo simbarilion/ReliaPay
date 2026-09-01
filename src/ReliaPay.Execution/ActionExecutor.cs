@@ -12,7 +12,8 @@ using ReliaPay.Security;
 namespace ReliaPay.Execution;
 
 /// <summary>
-/// Универсальный исполнитель POST /api/{module}/{action}: schema, транзакция, api.invoke, commit/rollback.
+/// Универсальный исполнитель POST /api/{module}/{action}. HTTP открывает runtime-транзакцию
+/// и коммитит сам; worker передаёт свою транзакцию в <see cref="InvokeOnConnectionAsync"/>.
 /// </summary>
 public sealed class ActionExecutor
 {
@@ -144,6 +145,39 @@ public sealed class ActionExecutor
             .ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Вызывает <c>api.invoke</c> на уже открытой транзакции и проверяет конверт.
+    /// Не делает COMMIT и ROLLBACK: HTTP коммитит сам, worker — только вместе с <c>finish_job</c>.
+    /// </summary>
+    public async Task<ActionInvokeParseResult> InvokeOnConnectionAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        ActionManifest manifest,
+        TrustedContext context,
+        string payloadJson,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(transaction);
+        ArgumentNullException.ThrowIfNull(manifest);
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentException.ThrowIfNullOrWhiteSpace(payloadJson);
+
+        await using NpgsqlCommand command = new(
+            "SELECT api.invoke(@module, @action, @version, @context::jsonb, @payload::jsonb)::text",
+            connection,
+            transaction);
+        command.CommandTimeout = Math.Max(1, (manifest.TimeoutMs + 999) / 1000);
+        command.Parameters.AddWithValue("module", manifest.Module);
+        command.Parameters.AddWithValue("action", manifest.Action);
+        command.Parameters.AddWithValue("version", manifest.Version);
+        command.Parameters.AddWithValue("context", JsonSerializer.Serialize(ToInvokeContext(context), ContextJsonOptions));
+        command.Parameters.AddWithValue("payload", payloadJson);
+        object? scalar = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        string json = scalar as string ?? Convert.ToString(scalar) ?? "{}";
+        return ActionInvokeEnvelope.Parse(json, manifest, _validator);
+    }
+
     private async Task<ActionHttpResult> InvokeInTransactionAsync(
         ActionManifest manifest,
         TrustedContext context,
@@ -157,19 +191,15 @@ public sealed class ActionExecutor
         {
             connection = await _connections.OpenRuntimeConnectionAsync(cancellationToken).ConfigureAwait(false);
             transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-            await using NpgsqlCommand command = new(
-                "SELECT api.invoke(@module, @action, @version, @context::jsonb, @payload::jsonb)::text",
-                connection,
-                transaction);
-            command.CommandTimeout = Math.Max(1, (manifest.TimeoutMs + 999) / 1000);
-            command.Parameters.AddWithValue("module", manifest.Module);
-            command.Parameters.AddWithValue("action", manifest.Action);
-            command.Parameters.AddWithValue("version", manifest.Version);
-            command.Parameters.AddWithValue("context", JsonSerializer.Serialize(ToInvokeContext(context), ContextJsonOptions));
-            command.Parameters.AddWithValue("payload", payloadJson);
-            object? scalar = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-            string json = scalar as string ?? Convert.ToString(scalar) ?? "{}";
-            return await CompleteInvokeAsync(manifest, context, json, transaction, cancellationToken)
+            ActionInvokeParseResult parsed = await InvokeOnConnectionAsync(
+                    connection,
+                    transaction,
+                    manifest,
+                    context,
+                    payloadJson,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return await CompleteInvokeAsync(manifest, context, parsed, transaction, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!httpCancellation.IsCancellationRequested)
@@ -223,77 +253,28 @@ public sealed class ActionExecutor
     private async Task<ActionHttpResult> CompleteInvokeAsync(
         ActionManifest manifest,
         TrustedContext context,
-        string invokeJson,
+        ActionInvokeParseResult parsed,
         NpgsqlTransaction transaction,
         CancellationToken cancellationToken)
     {
-        using JsonDocument document = JsonDocument.Parse(invokeJson);
-        JsonElement root = document.RootElement;
-        string status = root.TryGetProperty("status", out JsonElement statusElement)
-            ? statusElement.GetString() ?? string.Empty
-            : string.Empty;
-
-        if (string.Equals(status, "error", StringComparison.Ordinal))
-        {
-            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
-            await PersistErrorDispatchAsync(manifest, context, cancellationToken).ConfigureAwait(false);
-            string code = root.TryGetProperty("code", out JsonElement codeElement)
-                ? codeElement.GetString() ?? ErrorCodes.InternalError
-                : ErrorCodes.InternalError;
-            string message = root.TryGetProperty("message", out JsonElement messageElement)
-                ? messageElement.GetString() ?? "action failed"
-                : "action failed";
-            return Fail(code, SanitizeMessage(code, message), context.CorrelationId, manifest.Version);
-        }
-
-        if (!string.Equals(status, "ok", StringComparison.Ordinal)
-            || !root.TryGetProperty("outcome", out JsonElement outcomeElement)
-            || outcomeElement.ValueKind != JsonValueKind.String
-            || !root.TryGetProperty("result", out JsonElement resultElement)
-            || resultElement.ValueKind != JsonValueKind.Object)
+        if (parsed is ActionInvokeParseResult.Failure failure)
         {
             await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
             await PersistErrorDispatchAsync(manifest, context, cancellationToken).ConfigureAwait(false);
             return Fail(
-                ErrorCodes.ActionContractViolation,
-                "action result does not match contract",
+                failure.Code,
+                SanitizeMessage(failure.Code, failure.Message),
                 context.CorrelationId,
                 manifest.Version);
         }
 
-        string outcome = outcomeElement.GetString() ?? string.Empty;
-        if (!manifest.Outcomes.Contains(outcome, StringComparer.Ordinal))
-        {
-            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
-            await PersistErrorDispatchAsync(manifest, context, cancellationToken).ConfigureAwait(false);
-            return Fail(
-                ErrorCodes.ActionContractViolation,
-                "action result does not match contract",
-                context.CorrelationId,
-                manifest.Version);
-        }
-
-        SchemaValidationResult resultCheck = _validator.Validate(
-            resultElement.GetRawText(),
-            manifest.ResponseSchema.GetRawText());
-        if (!resultCheck.IsValid)
-        {
-            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
-            await PersistErrorDispatchAsync(manifest, context, cancellationToken).ConfigureAwait(false);
-            return Fail(
-                ErrorCodes.ActionContractViolation,
-                "action result does not match contract",
-                context.CorrelationId,
-                manifest.Version);
-        }
-
-        JsonElement resultClone = resultElement.Clone();
+        ActionInvokeParseResult.Success success = (ActionInvokeParseResult.Success)parsed;
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return new ActionHttpSuccess(
             new HttpSuccessEnvelope(
                 "ok",
-                outcome,
-                resultClone,
+                success.Outcome,
+                success.Result,
                 new HttpResponseMeta(context.CorrelationId, manifest.Version)));
     }
 
