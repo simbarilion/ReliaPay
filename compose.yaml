@@ -98,5 +98,44 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  worker-a:
+    image: reliapay-worker:local
+    build:
+      context: .
+      dockerfile: src/ReliaPay.Worker/Dockerfile
+    environment:
+      COURSE_DB_HOST: postgres
+      COURSE_DB_PORT: ${COURSE_DB_PORT:-5432}
+      COURSE_DB_NAME: ${COURSE_DB_NAME:-course}
+      COURSE_WORKER_USER: ${COURSE_WORKER_USER:-workflow_worker}
+      COURSE_WORKER_PASSWORD: ${COURSE_WORKER_PASSWORD:-moduledev-worker}
+      COURSE_WORKER_INSTANCE_ID: worker-a
+      COURSE_TEST_PROFILE: ${COURSE_TEST_PROFILE:-}
+      COURSE_FAILPOINT: ${COURSE_FAILPOINT:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      cli:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker-b:
+    image: reliapay-worker:local
+    environment:
+      COURSE_DB_HOST: postgres
+      COURSE_DB_PORT: ${COURSE_DB_PORT:-5432}
+      COURSE_DB_NAME: ${COURSE_DB_NAME:-course}
+      COURSE_WORKER_USER: ${COURSE_WORKER_USER:-workflow_worker}
+      COURSE_WORKER_PASSWORD: ${COURSE_WORKER_PASSWORD:-moduledev-worker}
+      COURSE_WORKER_INSTANCE_ID: worker-b
+      COURSE_TEST_PROFILE: ${COURSE_TEST_PROFILE:-}
+      COURSE_FAILPOINT: ${COURSE_FAILPOINT:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      cli:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   course_data:

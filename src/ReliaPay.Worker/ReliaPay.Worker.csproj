@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>ReliaPay.Worker</RootNamespace>
+    <AssemblyName>ReliaPay.Worker</AssemblyName>
+    <Description>Generic workflow worker: claim, invoke и finish/fail на одной транзакции.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ReliaPay.Catalog\ReliaPay.Catalog.csproj" />
+    <ProjectReference Include="..\ReliaPay.Contracts\ReliaPay.Contracts.csproj" />
+    <ProjectReference Include="..\ReliaPay.Data\ReliaPay.Data.csproj" />
+    <ProjectReference Include="..\ReliaPay.Execution\ReliaPay.Execution.csproj" />
+    <ProjectReference Include="..\ReliaPay.Json\ReliaPay.Json.csproj" />
+    <ProjectReference Include="..\ReliaPay.Security\ReliaPay.Security.csproj" />
+  </ItemGroup>
+</Project>

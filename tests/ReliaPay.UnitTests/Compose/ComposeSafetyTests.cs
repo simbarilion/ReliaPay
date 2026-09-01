@@ -13,6 +13,21 @@ public sealed class ComposeSafetyTests
         compose.Should().Contain("db/postgres/Dockerfile");
         compose.Should().Contain("COURSE_WORKER_PASSWORD");
         compose.Should().Contain("course_data");
+        compose.Should().Contain("worker-a:");
+        compose.Should().Contain("worker-b:");
+        compose.Should().Contain("reliapay-worker:local");
+        compose.Should().Contain("COURSE_FAILPOINT");
+        compose.Should().Contain("COURSE_WORKER_INSTANCE_ID");
+        CountOccurrences(compose, "image: reliapay-worker:local").Should().Be(2);
+    }
+
+    [Fact]
+    public void Worker_image_is_a_dotnet_runtime()
+    {
+        string dockerfile = File.ReadAllText(Path.Combine(RepoRoot(), "src", "ReliaPay.Worker", "Dockerfile"));
+        dockerfile.Should().Contain("mcr.microsoft.com/dotnet/sdk:10.0@sha256:");
+        dockerfile.Should().Contain("mcr.microsoft.com/dotnet/runtime:10.0@sha256:");
+        dockerfile.Should().Contain("ReliaPay.Worker");
     }
 
     [Fact]
@@ -56,5 +71,18 @@ public sealed class ComposeSafetyTests
         }
 
         throw new InvalidOperationException("Repository root with compose.yaml was not found.");
+    }
+
+    private static int CountOccurrences(string text, string value)
+    {
+        int count = 0;
+        int index = 0;
+        while ((index = text.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += value.Length;
+        }
+
+        return count;
     }
 }

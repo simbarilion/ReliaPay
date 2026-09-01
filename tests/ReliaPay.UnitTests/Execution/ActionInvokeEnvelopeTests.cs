@@ -2,6 +2,7 @@ using System.Text.Json;
 using FluentAssertions;
 using ReliaPay.Catalog;
 using ReliaPay.Contracts;
+using ReliaPay.Data;
 using ReliaPay.Execution;
 using ReliaPay.Json;
 
@@ -53,6 +54,10 @@ public sealed class ActionInvokeEnvelopeTests
     public void Executor_invokes_on_caller_transaction_without_own_commit()
     {
         typeof(ActionExecutor).GetMethod(nameof(ActionExecutor.InvokeOnConnectionAsync))
+            .Should()
+            .NotBeNull();
+        typeof(ActionExecutor).GetConstructor(
+                new[] { typeof(PostgresConnectionFactory), typeof(JsonDocumentValidator) })
             .Should()
             .NotBeNull();
     }

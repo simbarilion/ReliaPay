@@ -22,7 +22,7 @@ public sealed class ActionExecutor
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    private readonly ActionCatalogReader _catalog;
+    private readonly ActionCatalogReader? _catalog;
     private readonly PostgresConnectionFactory _connections;
     private readonly JsonDocumentValidator _validator;
 
@@ -36,8 +36,28 @@ public sealed class ActionExecutor
         ActionCatalogReader catalog,
         PostgresConnectionFactory connections,
         JsonDocumentValidator validator)
+        : this(connections, validator, catalog)
     {
         ArgumentNullException.ThrowIfNull(catalog);
+    }
+
+    /// <summary>
+    /// Исполнитель для worker: только <see cref="InvokeOnConnectionAsync"/> без чтения каталога.
+    /// </summary>
+    /// <param name="connections">Фабрика соединений роли worker.</param>
+    /// <param name="validator">Проверка request/response schema из claim.</param>
+    public ActionExecutor(
+        PostgresConnectionFactory connections,
+        JsonDocumentValidator validator)
+        : this(connections, validator, catalog: null)
+    {
+    }
+
+    private ActionExecutor(
+        PostgresConnectionFactory connections,
+        JsonDocumentValidator validator,
+        ActionCatalogReader? catalog)
+    {
         ArgumentNullException.ThrowIfNull(connections);
         ArgumentNullException.ThrowIfNull(validator);
         _catalog = catalog;
@@ -72,6 +92,11 @@ public sealed class ActionExecutor
                 $"/api/{route.Module}/{route.Action}",
                 route.Module,
                 route.Action));
+
+        if (_catalog is null)
+        {
+            throw new InvalidOperationException("HTTP execution requires an action catalog.");
+        }
 
         ActionManifest? manifest;
         try
@@ -149,6 +174,13 @@ public sealed class ActionExecutor
     /// Вызывает <c>api.invoke</c> на уже открытой транзакции и проверяет конверт.
     /// Не делает COMMIT и ROLLBACK: HTTP коммитит сам, worker — только вместе с <c>finish_job</c>.
     /// </summary>
+    /// <param name="connection">Открытое соединение.</param>
+    /// <param name="transaction">Открытая транзакция вызывающего.</param>
+    /// <param name="manifest">Манифест из каталога или из claim.</param>
+    /// <param name="context">Доверенный контекст.</param>
+    /// <param name="payloadJson">JSON-объект payload.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns>Успех или ошибка конверта без изменения транзакции.</returns>
     public async Task<ActionInvokeParseResult> InvokeOnConnectionAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,

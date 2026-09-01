@@ -28,6 +28,7 @@
     <ProjectReference Include="..\..\src\ReliaPay.Observability.Hosting\ReliaPay.Observability.Hosting.csproj" />
     <ProjectReference Include="..\..\src\ReliaPay.OpenApi\ReliaPay.OpenApi.csproj" />
     <ProjectReference Include="..\..\src\ReliaPay.Security\ReliaPay.Security.csproj" />
+    <ProjectReference Include="..\..\src\ReliaPay.Worker\ReliaPay.Worker.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\README.md" CopyToOutputDirectory="PreserveNewest" Link="README.md" />
