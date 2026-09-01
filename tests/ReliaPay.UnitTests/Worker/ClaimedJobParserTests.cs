@@ -27,6 +27,7 @@ public sealed class ClaimedJobParserTests
                   "processId": "22222222-2222-2222-2222-222222222222",
                   "stepInstanceId": "33333333-3333-3333-3333-333333333333",
                   "executionId": "44444444-4444-4444-4444-444444444444",
+                  "attemptId": "66666666-6666-6666-6666-666666666666",
                   "leaseOwner": "worker-a",
                   "leaseVersion": 2,
                   "leaseUntil": "2026-09-01T12:00:00+00:00",
@@ -62,6 +63,10 @@ public sealed class ClaimedJobParserTests
         context.Principal.Should().Be("workflow-worker");
         context.Consumer.Should().Be("internal");
         context.RequestId.Should().Be("44444444-4444-4444-4444-444444444444");
+        context.ExecutionId.Should().Be("44444444-4444-4444-4444-444444444444");
+        context.ProcessId.Should().Be("22222222-2222-2222-2222-222222222222");
+        context.JobId.Should().Be("11111111-1111-1111-1111-111111111111");
+        context.AttemptId.Should().Be("66666666-6666-6666-6666-666666666666");
         context.Scopes.Should().Equal("workflow:execute");
         context.Deadline.Should().Be(DateTimeOffset.Parse("2026-09-01T12:00:00Z").AddMilliseconds(1600));
     }

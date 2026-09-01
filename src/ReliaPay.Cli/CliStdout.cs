@@ -22,7 +22,9 @@ public static class CliStdout
     public static Task WriteAsync(CliSuccessEnvelope envelope)
     {
         ArgumentNullException.ThrowIfNull(envelope);
-        return Console.Out.WriteLineAsync(JsonSerializer.Serialize(envelope, Options));
+        Console.Out.WriteLine(JsonSerializer.Serialize(envelope, Options));
+        Console.Out.Flush();
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -33,6 +35,8 @@ public static class CliStdout
     public static Task WriteAsync(CliErrorEnvelope envelope)
     {
         ArgumentNullException.ThrowIfNull(envelope);
-        return Console.Out.WriteLineAsync(JsonSerializer.Serialize(envelope, Options));
+        Console.Out.WriteLine(JsonSerializer.Serialize(envelope, Options));
+        Console.Out.Flush();
+        return Task.CompletedTask;
     }
 }

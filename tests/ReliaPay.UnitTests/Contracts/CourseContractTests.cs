@@ -60,6 +60,10 @@ public sealed class CourseContractTests
         context.Scopes.Should().Equal("payment:write", "payment:read");
         context.CorrelationId.Should().Be(correlationId);
         context.RequestId.Should().Be("request-123");
+        context.ExecutionId.Should().BeNull();
+        context.ProcessId.Should().BeNull();
+        context.JobId.Should().BeNull();
+        context.AttemptId.Should().BeNull();
     }
 
     [Fact]

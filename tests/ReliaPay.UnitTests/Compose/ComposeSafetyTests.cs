@@ -48,6 +48,15 @@ public sealed class ComposeSafetyTests
         script.Should().Contain("CREATE SCHEMA workflow");
         script.Should().Contain("COURSE_WORKER_PASSWORD");
         script.Should().Contain("GRANT CONNECT ON DATABASE");
+        script.Should().Contain("GRANT CREATE ON DATABASE");
+    }
+
+    [Fact]
+    public void Existing_volume_bootstrap_grants_schema_create_to_course_owner()
+    {
+        string script = File.ReadAllText(Path.Combine(RepoRoot(), "db", "postgres", "ensure-app-roles.sh"));
+        script.Should().Contain("GRANT CREATE ON DATABASE");
+        script.Should().Contain("course_owner");
     }
 
     private static string ComposePath()

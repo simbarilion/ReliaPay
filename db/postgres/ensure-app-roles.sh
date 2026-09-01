@@ -23,6 +23,7 @@ END
 ALTER ROLE workflow_worker PASSWORD :'worker_password';
 
 GRANT CONNECT ON DATABASE ${POSTGRES_DB:-course} TO workflow_worker;
+GRANT CREATE ON DATABASE ${POSTGRES_DB:-course} TO course_owner;
 
 CREATE SCHEMA IF NOT EXISTS workflow AUTHORIZATION course_owner;
 

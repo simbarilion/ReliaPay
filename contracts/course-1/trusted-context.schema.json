@@ -21,6 +21,10 @@
     },
     "correlationId": { "type": "string", "format": "uuid" },
     "requestId": { "type": ["string", "null"] },
-    "deadline": { "type": "string", "format": "date-time" }
+    "deadline": { "type": "string", "format": "date-time" },
+    "executionId": { "type": ["string", "null"] },
+    "processId": { "type": ["string", "null"] },
+    "jobId": { "type": ["string", "null"] },
+    "attemptId": { "type": ["string", "null"] }
   }
 }

@@ -350,7 +350,11 @@ public sealed class ActionExecutor
             context.Scopes,
             context.CorrelationId,
             context.RequestId,
-            context.Deadline);
+            context.Deadline,
+            context.ExecutionId,
+            context.ProcessId,
+            context.JobId,
+            context.AttemptId);
     }
 
     private static string SanitizeMessage(string code, string message)
@@ -394,5 +398,9 @@ public sealed class ActionExecutor
         IReadOnlyList<string> Scopes,
         Guid CorrelationId,
         string? RequestId,
-        DateTimeOffset Deadline);
+        DateTimeOffset Deadline,
+        string? ExecutionId,
+        string? ProcessId,
+        string? JobId,
+        string? AttemptId);
 }

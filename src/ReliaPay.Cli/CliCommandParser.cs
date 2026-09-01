@@ -55,7 +55,7 @@ public sealed record FlowActivateCliCommand(string FlowName, int Version) : Pars
 /// <summary>Команда <c>flow start</c>.</summary>
 /// <param name="FlowName">Имя активной карты.</param>
 /// <param name="BusinessKey">Идемпотентный ключ process.</param>
-/// <param name="DataPath">JSON process data или stdin.</param>
+/// <param name="DataPath">JSON process data, stdin или пусто для <c>{}</c>.</param>
 public sealed record FlowStartCliCommand(string FlowName, string BusinessKey, string DataPath) : ParsedCliCommand;
 
 /// <summary>Команда <c>flow get &lt;processId&gt;</c>.</summary>
@@ -264,19 +264,18 @@ public static class CliCommandParser
     {
         if (!TryParseNamed(args, skip: 2, out string? name, out IReadOnlyDictionary<string, string> flags, out string? error))
         {
-            return Invalid(error ?? "flow start <flow_name> --business-key <key> --data <file>");
+            return Invalid(error ?? "flow start <flow_name> --business-key <key> [--data <file>]");
         }
 
         if (name is null
             || !flags.TryGetValue("--business-key", out string? key)
-            || string.IsNullOrWhiteSpace(key)
-            || !flags.TryGetValue("--data", out string? data)
-            || string.IsNullOrWhiteSpace(data))
+            || string.IsNullOrWhiteSpace(key))
         {
-            return Invalid("flow start <flow_name> --business-key <key> --data <file>");
+            return Invalid("flow start <flow_name> --business-key <key> [--data <file>]");
         }
 
-        return new FlowStartCliCommand(name, key, data);
+        flags.TryGetValue("--data", out string? data);
+        return new FlowStartCliCommand(name, key, data ?? string.Empty);
     }
 
     /// <summary>

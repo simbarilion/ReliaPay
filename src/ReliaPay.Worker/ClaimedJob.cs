@@ -21,6 +21,9 @@ public sealed class ClaimedJob
     /// <summary>Идентификатор исполнения; это <c>requestId</c> для invoke.</summary>
     public required Guid ExecutionId { get; init; }
 
+    /// <summary>Идентификатор текущей попытки.</summary>
+    public required Guid AttemptId { get; init; }
+
     /// <summary>Владелец текущего lease.</summary>
     public required string LeaseOwner { get; init; }
 
@@ -96,7 +99,16 @@ public sealed class ClaimedJob
             RequiredPolicy,
             correlationId,
             ExecutionId.ToString("D"),
-            now.AddMilliseconds(TimeoutMs));
+            now.AddMilliseconds(TimeoutMs),
+            ExecutionId.ToString("D"),
+            FormatId(ProcessId),
+            FormatId(JobId),
+            FormatId(AttemptId));
+    }
+
+    private static string? FormatId(Guid value)
+    {
+        return value == Guid.Empty ? null : value.ToString("D");
     }
 }
 
@@ -155,6 +167,7 @@ public static class ClaimedJobParser
             ProcessId = ReadGuid(item, "processId"),
             StepInstanceId = ReadGuid(item, "stepInstanceId"),
             ExecutionId = ReadGuid(item, "executionId"),
+            AttemptId = ReadGuid(item, "attemptId"),
             LeaseOwner = ReadString(item, "leaseOwner") ?? string.Empty,
             LeaseVersion = ReadInt64(item, "leaseVersion"),
             Module = ReadString(item, "module") ?? string.Empty,

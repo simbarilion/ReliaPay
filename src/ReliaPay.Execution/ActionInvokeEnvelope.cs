@@ -14,7 +14,7 @@ public abstract record ActionInvokeParseResult
     public sealed record Success(string Outcome, JsonElement Result) : ActionInvokeParseResult;
 
     /// <summary>Ошибка target или нарушение контракта; транзакцию откатывает вызывающий.</summary>
-    public sealed record Failure(string Code, string Message) : ActionInvokeParseResult;
+    public sealed record Failure(string Code, string Message, bool Retryable = false) : ActionInvokeParseResult;
 }
 
 /// <summary>
@@ -49,7 +49,9 @@ public static class ActionInvokeEnvelope
             string message = root.TryGetProperty("message", out JsonElement messageElement)
                 ? messageElement.GetString() ?? "action failed"
                 : "action failed";
-            return new ActionInvokeParseResult.Failure(code, message);
+            bool retryable = root.TryGetProperty("retryable", out JsonElement retryableElement)
+                && retryableElement.ValueKind == JsonValueKind.True;
+            return new ActionInvokeParseResult.Failure(code, message, retryable);
         }
 
         if (!string.Equals(status, "ok", StringComparison.Ordinal)

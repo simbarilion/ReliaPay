@@ -16,8 +16,9 @@ internal static class WorkflowEnvelopeWriter
     /// <summary>
     /// Если PostgreSQL вернул <c>status=ok</c>, поле result (или остальные поля) уходит в CLI-конверт.
     /// </summary>
-    public static async Task<int> WriteAsync(string json)
+    public static async Task<int> WriteAsync(string json, IReadOnlyDictionary<string, string>? extra = null)
     {
+        json = WorkflowCliResult.ApplyContractFields(json, extra);
         using JsonDocument document = JsonDocument.Parse(json);
         JsonElement root = document.RootElement;
         string status = root.TryGetProperty("status", out JsonElement statusElement)
@@ -62,6 +63,7 @@ internal static class WorkflowEnvelopeWriter
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         })).ConfigureAwait(false);
+        await Console.Out.FlushAsync().ConfigureAwait(false);
         return 0;
     }
 }

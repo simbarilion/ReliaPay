@@ -36,6 +36,20 @@ public sealed class ActionInvokeEnvelopeTests
         ActionInvokeParseResult.Failure failure = parsed.Should().BeOfType<ActionInvokeParseResult.Failure>().Subject;
         failure.Code.Should().Be(ErrorCodes.PayloadInvalid);
         failure.Message.Should().Be("payload does not match schema");
+        failure.Retryable.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Retryable_error_envelope_is_failure_with_retryable_true()
+    {
+        ActionInvokeParseResult parsed = ActionInvokeEnvelope.Parse(
+            """{"status":"error","code":"fixture.retry","message":"forced","retryable":true}""",
+            Manifest(),
+            Validator);
+
+        ActionInvokeParseResult.Failure failure = parsed.Should().BeOfType<ActionInvokeParseResult.Failure>().Subject;
+        failure.Code.Should().Be("fixture.retry");
+        failure.Retryable.Should().BeTrue();
     }
 
     [Fact]

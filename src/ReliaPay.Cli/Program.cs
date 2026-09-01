@@ -28,6 +28,11 @@ public sealed class Program
     /// <returns>Код процесса.</returns>
     internal static async Task<int> DispatchAsync(ParsedCliCommand command, CancellationToken cancellationToken)
     {
+        if (command is not IdleCliCommand)
+        {
+            WriteReadyMarker();
+        }
+
         return command switch
         {
             IdleCliCommand => await RunIdleAsync(cancellationToken).ConfigureAwait(false),
@@ -109,7 +114,7 @@ public sealed class Program
     private static async Task<int> FailUsageAsync(InvalidCliCommand invalid)
     {
         await Console.Error.WriteLineAsync(
-                "Supported commands: migration apply <directory>; action validate|publish <manifest>; action list; action activate|disable <module.action> --version <version> [--replacement-version <version>]; flow validate|publish <map>; flow list; flow activate <name> --version <version>; flow start <name> --business-key <key> --data <file>; flow get <processId>; flow signal <processId> --type <type> --message-id <id> --payload <file>.")
+                "Supported commands: migration apply <directory>; action validate|publish <manifest>; action list; action activate|disable <module.action> --version <version> [--replacement-version <version>]; flow validate|publish <map>; flow list; flow activate <name> --version <version>; flow start <name> --business-key <key> [--data <file>]; flow get <processId>; flow signal <processId> --type <type> --message-id <id> --payload <file>.")
             .ConfigureAwait(false);
         return await CliFailure.WriteAsync(invalid.Code, invalid.Message).ConfigureAwait(false);
     }

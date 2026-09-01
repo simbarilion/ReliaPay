@@ -113,6 +113,15 @@ public sealed class CliCommandParserTests
     }
 
     [Fact]
+    public void Flow_start_without_data_uses_empty_object()
+    {
+        FlowStartCliCommand start = CliCommandParser.Parse(
+                ["flow", "start", "flow-4a31f70549", "--business-key", "bk-1"])
+            .Should().BeOfType<FlowStartCliCommand>().Subject;
+        start.DataPath.Should().BeEmpty();
+    }
+
+    [Fact]
     public void Flow_get_and_signal_read_process_id()
     {
         CliCommandParser.Parse(["flow", "get", "442e3810-49b0-46a0-9938-05cd02cab286"])

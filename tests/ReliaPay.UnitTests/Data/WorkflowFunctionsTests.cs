@@ -24,6 +24,7 @@ public sealed class WorkflowFunctionsTests
         string definitions = ReadMigration("20260826090000_workflow_definitions_and_runtime.sql");
         string functions = ReadMigration("20260826100000_workflow_functions.sql");
         string views = ReadMigration("20260826110000_workflow_views_and_privileges.sql");
+        string startPayload = ReadMigration("20260826140000_process_start_payload.sql");
 
         definitions.Should().Contain("CREATE TABLE workflow.flow_versions");
         definitions.Should().Contain("CREATE TABLE workflow.processes");
@@ -58,6 +59,14 @@ public sealed class WorkflowFunctionsTests
         views.Should().Contain("GRANT EXECUTE ON FUNCTION workflow.finish_job(uuid, text, bigint, text, jsonb) TO workflow_worker");
         views.Should().Contain("GRANT EXECUTE ON FUNCTION workflow.fail_job(uuid, text, bigint, text, boolean) TO workflow_worker");
         views.Should().Contain("GRANT EXECUTE ON FUNCTION workflow.finish_job(uuid, text, bigint, text, jsonb) TO course_publication");
+
+        startPayload.Should().Contain("ADD COLUMN IF NOT EXISTS start_payload jsonb");
+        startPayload.Should().Contain("IF v_process.start_payload = v_data THEN");
+        startPayload.Should().Contain("CREATE OR REPLACE FUNCTION workflow.start_process(");
+
+        string contractFields = ReadMigration("20260826150000_workflow_contract_fields.sql");
+        contractFields.Should().Contain("'attemptId', v_attempt_id");
+        contractFields.Should().Contain("CREATE OR REPLACE FUNCTION workflow.claim_jobs(");
     }
 
     private static string ReadMigration(string fileName)

@@ -128,15 +128,15 @@ public sealed class WorkflowWorker
 
         ActionManifest manifest = job.ToManifest();
         TrustedContext context = job.ToTrustedContext(Guid.NewGuid(), DateTimeOffset.UtcNow);
-        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(job.TimeoutMs);
 
         NpgsqlConnection? connection = null;
         NpgsqlTransaction? transaction = null;
         try
         {
-            connection = await _store.OpenConnectionAsync(timeout.Token).ConfigureAwait(false);
-            transaction = await connection.BeginTransactionAsync(timeout.Token).ConfigureAwait(false);
+            connection = await _store.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+            transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+            using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(job.TimeoutMs);
             ActionInvokeParseResult invoked = await _executor
                 .InvokeOnConnectionAsync(connection, transaction, manifest, context, payloadJson, timeout.Token)
                 .ConfigureAwait(false);
@@ -146,7 +146,7 @@ public sealed class WorkflowWorker
                 await FailIgnoringStaleAsync(
                         job,
                         failure.Code,
-                        JobFailurePolicy.IsRetryable(failure.Code),
+                        failure.Retryable,
                         cancellationToken)
                     .ConfigureAwait(false);
                 return;

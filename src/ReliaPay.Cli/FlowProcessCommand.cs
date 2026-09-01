@@ -51,16 +51,23 @@ internal static class FlowProcessCommand
         string dataPath,
         CancellationToken cancellationToken)
     {
-        if (!CliInput.Exists(dataPath))
+        string data;
+        if (string.IsNullOrWhiteSpace(dataPath))
+        {
+            data = "{}";
+        }
+        else if (!CliInput.Exists(dataPath))
         {
             return await CliFailure.WriteAsync(ErrorCodes.RequestInvalid, "process data file does not exist")
                 .ConfigureAwait(false);
         }
-
-        string data = await CliInput.ReadAsync(dataPath).ConfigureAwait(false);
-        if (string.IsNullOrWhiteSpace(data))
+        else
         {
-            data = "{}";
+            data = await CliInput.ReadAsync(dataPath).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(data))
+            {
+                data = "{}";
+            }
         }
 
         try
@@ -68,7 +75,9 @@ internal static class FlowProcessCommand
             string json = await FlowMapCommand.CreateClient()
                 .StartAsync(flowName, businessKey, data, cancellationToken)
                 .ConfigureAwait(false);
-            return await WorkflowEnvelopeWriter.WriteAsync(json).ConfigureAwait(false);
+            return await WorkflowEnvelopeWriter
+                .WriteAsync(json, extra: new Dictionary<string, string> { ["operation"] = "started" })
+                .ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is PostgresUnavailableException or InvalidOperationException)
         {
@@ -131,7 +140,15 @@ internal static class FlowProcessCommand
             string json = await FlowMapCommand.CreateClient()
                 .SignalAsync(id, type, messageId, payload, cancellationToken)
                 .ConfigureAwait(false);
-            return await WorkflowEnvelopeWriter.WriteAsync(json).ConfigureAwait(false);
+            return await WorkflowEnvelopeWriter
+                .WriteAsync(
+                    json,
+                    extra: new Dictionary<string, string>
+                    {
+                        ["processId"] = processId,
+                        ["signalType"] = type,
+                    })
+                .ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is PostgresUnavailableException or InvalidOperationException)
         {
