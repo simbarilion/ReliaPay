@@ -2,16 +2,19 @@ name: reliapay
 
 services:
   postgres:
-    image: postgres:16@sha256:081f1bc7bd5e143dbb6e487b710bbc27712cdcfaced4c071b8e47349aa1b4171
+    image: reliapay-postgres:local
+    build:
+      context: .
+      dockerfile: db/postgres/Dockerfile
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-moduledev-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-course}
-      COURSE_PUBLICATION_PASSWORD: ${COURSE_PUBLICATION_PASSWORD}
-      COURSE_RUNTIME_PASSWORD: ${COURSE_RUNTIME_PASSWORD}
+      COURSE_PUBLICATION_PASSWORD: ${COURSE_PUBLICATION_PASSWORD:-moduledev-publication}
+      COURSE_RUNTIME_PASSWORD: ${COURSE_RUNTIME_PASSWORD:-moduledev-runtime}
+      COURSE_WORKER_PASSWORD: ${COURSE_WORKER_PASSWORD:-moduledev-worker}
     volumes:
       - course_data:/var/lib/postgresql/data
-      - ./db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d course"]
       interval: 5s
@@ -29,12 +32,12 @@ services:
       ASPNETCORE_URLS: http://+:8080
       COURSE_JWT_ISSUER: ${COURSE_JWT_ISSUER:-moduledev-course}
       COURSE_JWT_AUDIENCE: ${COURSE_JWT_AUDIENCE:-moduledev-api}
-      COURSE_JWT_SIGNING_KEY: ${COURSE_JWT_SIGNING_KEY}
+      COURSE_JWT_SIGNING_KEY: ${COURSE_JWT_SIGNING_KEY:-moduledev-course-local-hs256-key}
       COURSE_DB_HOST: postgres
       COURSE_DB_PORT: ${COURSE_DB_PORT:-5432}
       COURSE_DB_NAME: ${COURSE_DB_NAME:-course}
       COURSE_RUNTIME_USER: ${COURSE_RUNTIME_USER:-course_runtime}
-      COURSE_RUNTIME_PASSWORD: ${COURSE_RUNTIME_PASSWORD}
+      COURSE_RUNTIME_PASSWORD: ${COURSE_RUNTIME_PASSWORD:-moduledev-runtime}
       LOG_LEVEL: ${LOG_LEVEL:-Information}
     depends_on:
       postgres:
@@ -80,7 +83,7 @@ services:
       COURSE_DB_PORT: ${COURSE_DB_PORT:-5432}
       COURSE_DB_NAME: ${COURSE_DB_NAME:-course}
       COURSE_PUBLICATION_USER: ${COURSE_PUBLICATION_USER:-course_publication}
-      COURSE_PUBLICATION_PASSWORD: ${COURSE_PUBLICATION_PASSWORD}
+      COURSE_PUBLICATION_PASSWORD: ${COURSE_PUBLICATION_PASSWORD:-moduledev-publication}
       COURSE_MIGRATIONS_PATH: /migrations
       COURSE_MIGRATION_READY_FILE: /tmp/reliapay-migrated
       LOG_LEVEL: ${LOG_LEVEL:-Information}

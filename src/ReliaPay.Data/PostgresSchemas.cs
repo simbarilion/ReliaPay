@@ -19,4 +19,20 @@ public static class PostgresSchemas
     /// Read-only views для автопроверки.
     /// </summary>
     public const string Autocheck = "autocheck";
+
+    /// <summary>
+    /// Определения карт, process/job/attempt и SECURITY DEFINER-границы worker.
+    /// </summary>
+    public const string Workflow = "workflow";
+
+    /// <summary>
+    /// Схемы учебной модели в стабильном порядке.
+    /// </summary>
+    public static readonly IReadOnlyList<string> All =
+    [
+        Api,
+        App,
+        Autocheck,
+        Workflow
+    ];
 }

@@ -13,31 +13,44 @@ if [ -z "${COURSE_RUNTIME_PASSWORD}" ]; then
   exit 1
 fi
 
+if [ -z "${COURSE_WORKER_PASSWORD}" ]; then
+  echo "COURSE_WORKER_PASSWORD is required for role bootstrap" >&2
+  exit 1
+fi
+
 psql -v ON_ERROR_STOP=1 \
   --username "$POSTGRES_USER" \
   --dbname "$POSTGRES_DB" \
   --set=pub_password="$COURSE_PUBLICATION_PASSWORD" \
-  --set=run_password="$COURSE_RUNTIME_PASSWORD" <<SQL
+  --set=run_password="$COURSE_RUNTIME_PASSWORD" \
+  --set=worker_password="$COURSE_WORKER_PASSWORD" <<SQL
 CREATE ROLE course_owner NOLOGIN NOSUPERUSER INHERIT NOCREATEDB NOCREATEROLE NOREPLICATION;
 CREATE ROLE course_publication LOGIN NOSUPERUSER NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD :'pub_password';
 CREATE ROLE course_runtime LOGIN NOSUPERUSER INHERIT NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD :'run_password';
+CREATE ROLE workflow_worker LOGIN NOSUPERUSER NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD :'worker_password';
 
 GRANT course_owner TO course_publication WITH INHERIT FALSE;
 
 REVOKE CONNECT ON DATABASE ${POSTGRES_DB} FROM PUBLIC;
 GRANT CONNECT ON DATABASE ${POSTGRES_DB} TO course_publication;
 GRANT CONNECT ON DATABASE ${POSTGRES_DB} TO course_runtime;
+GRANT CONNECT ON DATABASE ${POSTGRES_DB} TO workflow_worker;
 
 CREATE SCHEMA api AUTHORIZATION course_owner;
 CREATE SCHEMA app AUTHORIZATION course_owner;
 CREATE SCHEMA autocheck AUTHORIZATION course_owner;
+CREATE SCHEMA workflow AUTHORIZATION course_owner;
 
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+REVOKE ALL ON SCHEMA workflow FROM PUBLIC;
 GRANT USAGE ON SCHEMA public TO course_publication;
 GRANT USAGE ON SCHEMA public TO course_runtime;
 GRANT USAGE ON SCHEMA api, app, autocheck TO course_publication;
 GRANT USAGE ON SCHEMA api, app, autocheck TO course_runtime;
+GRANT USAGE ON SCHEMA workflow TO course_publication;
+GRANT USAGE ON SCHEMA workflow TO course_runtime;
+GRANT USAGE ON SCHEMA api, workflow TO workflow_worker;
 
 CREATE TABLE api.schema_migrations (
     filename text PRIMARY KEY,
