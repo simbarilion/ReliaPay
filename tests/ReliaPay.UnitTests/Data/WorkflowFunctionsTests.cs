@@ -69,6 +69,26 @@ public sealed class WorkflowFunctionsTests
         contractFields.Should().Contain("CREATE OR REPLACE FUNCTION workflow.claim_jobs(");
     }
 
+    [Fact]
+    public void Unknown_pinned_map_signal_type_is_rejected_before_insert()
+    {
+        string sql = ReadMigration("20260826160000_reject_unknown_signal_type.sql");
+
+        sql.Should().Contain("CREATE OR REPLACE FUNCTION workflow.signal_process(");
+        sql.Should().Contain("FROM workflow.step_definitions");
+        sql.Should().Contain("AND flow_version = v_process.flow_version");
+        sql.Should().Contain("AND step_type = 'WAIT_SIGNAL'");
+        sql.Should().Contain("AND signal_type = p_type");
+        sql.Should().Contain($"error_envelope('{ErrorCodes.RequestInvalid}'");
+        sql.Should().Contain("INSERT INTO workflow.signals");
+        sql.Should().Contain("GRANT EXECUTE ON FUNCTION workflow.signal_process(uuid, text, text, jsonb) TO course_publication");
+
+        int typeCheck = sql.IndexOf("AND signal_type = p_type", StringComparison.Ordinal);
+        int insert = sql.IndexOf("INSERT INTO workflow.signals", StringComparison.Ordinal);
+        typeCheck.Should().BePositive();
+        insert.Should().BeGreaterThan(typeCheck);
+    }
+
     private static string ReadMigration(string fileName)
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
