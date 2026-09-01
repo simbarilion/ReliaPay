@@ -6,11 +6,15 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="JsonSchema.Net" Version="7.4.0" />
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
     <ProjectReference Include="..\ReliaPay.Contracts\ReliaPay.Contracts.csproj" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="..\..\contracts\course-1\action-manifest.schema.json">
       <LogicalName>ReliaPay.action_manifest.schema.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\contracts\course-1\workflow-map.schema.json">
+      <LogicalName>ReliaPay.workflow_map.schema.json</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 </Project>

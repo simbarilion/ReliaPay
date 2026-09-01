@@ -36,6 +36,56 @@ public sealed record ActionActivateCliCommand(string Route, int Version) : Parse
 /// <param name="ReplacementVersion">Новая default-версия, если нужна.</param>
 public sealed record ActionDisableCliCommand(string Route, int Version, int? ReplacementVersion) : ParsedCliCommand;
 
+/// <summary>Команда <c>flow validate &lt;map&gt;</c>.</summary>
+/// <param name="MapPath">Путь к JSON/YAML карте или <c>/dev/stdin</c>.</param>
+public sealed record FlowValidateCliCommand(string MapPath) : ParsedCliCommand;
+
+/// <summary>Команда <c>flow publish &lt;map&gt;</c>.</summary>
+/// <param name="MapPath">Путь к JSON/YAML карте или <c>/dev/stdin</c>.</param>
+public sealed record FlowPublishCliCommand(string MapPath) : ParsedCliCommand;
+
+/// <summary>Команда <c>flow list</c>.</summary>
+public sealed record FlowListCliCommand : ParsedCliCommand;
+
+/// <summary>Команда <c>flow activate &lt;flow_name&gt; --version &lt;version&gt;</c>.</summary>
+/// <param name="FlowName">Имя карты.</param>
+/// <param name="Version">Версия карты.</param>
+public sealed record FlowActivateCliCommand(string FlowName, int Version) : ParsedCliCommand;
+
+/// <summary>Команда <c>flow start</c>.</summary>
+/// <param name="FlowName">Имя активной карты.</param>
+/// <param name="BusinessKey">Идемпотентный ключ process.</param>
+/// <param name="DataPath">JSON process data или stdin.</param>
+public sealed record FlowStartCliCommand(string FlowName, string BusinessKey, string DataPath) : ParsedCliCommand;
+
+/// <summary>Команда <c>flow get &lt;processId&gt;</c>.</summary>
+/// <param name="ProcessId">Идентификатор process.</param>
+public sealed record FlowGetCliCommand(string ProcessId) : ParsedCliCommand;
+
+/// <summary>Команда <c>flow signal</c>.</summary>
+/// <param name="ProcessId">Идентификатор process.</param>
+/// <param name="SignalType">Тип сигнала.</param>
+/// <param name="MessageId">Глобально уникальный message id.</param>
+/// <param name="PayloadPath">JSON тела сигнала или stdin.</param>
+public sealed record FlowSignalCliCommand(
+    string ProcessId,
+    string SignalType,
+    string MessageId,
+    string PayloadPath) : ParsedCliCommand;
+
+/// <summary>Команда <c>flow test-finish</c> в тестовом профиле.</summary>
+/// <param name="JobId">Идентификатор job.</param>
+/// <param name="Owner">Заявленный lease owner.</param>
+/// <param name="LeaseVersion">Fencing token.</param>
+/// <param name="Outcome">Outcome action.</param>
+/// <param name="ResultPath">JSON result или stdin.</param>
+public sealed record FlowTestFinishCliCommand(
+    string JobId,
+    string Owner,
+    long LeaseVersion,
+    string Outcome,
+    string ResultPath) : ParsedCliCommand;
+
 /// <summary>Неверные аргументы или неизвестная команда.</summary>
 /// <param name="Code">Код ошибки CLI.</param>
 /// <param name="Message">Сообщение оператору.</param>
@@ -53,6 +103,14 @@ public static class CliCommandParser
     /// <returns>Команда или <see cref="InvalidCliCommand"/>.</returns>
     public static ParsedCliCommand Parse(IReadOnlyList<string> args)
     {
+        return Parse(args, Environment.GetEnvironmentVariable("COURSE_TEST_PROFILE"));
+    }
+
+    /// <summary>
+    /// Разбирает аргументы с явно заданным тестовым профилем (для unit-тестов).
+    /// </summary>
+    public static ParsedCliCommand Parse(IReadOnlyList<string> args, string? courseTestProfile)
+    {
         ArgumentNullException.ThrowIfNull(args);
         if (args.Count == 0)
         {
@@ -67,6 +125,11 @@ public static class CliCommandParser
             }
 
             return Invalid("migration apply <directory>");
+        }
+
+        if (EqualsOrd(args[0], "flow"))
+        {
+            return ParseFlow(args, string.Equals(courseTestProfile, "1", StringComparison.Ordinal));
         }
 
         if (!EqualsOrd(args[0], "action"))
@@ -111,6 +174,242 @@ public static class CliCommandParser
         }
 
         return Invalid("action validate|publish|list|activate|disable");
+    }
+
+    /// <summary>
+    /// Разбирает семейство <c>flow ...</c>.
+    /// </summary>
+    private static ParsedCliCommand ParseFlow(IReadOnlyList<string> args, bool testProfile)
+    {
+        if (args.Count < 2)
+        {
+            return Invalid("flow validate|publish|list|activate|start|get|signal");
+        }
+
+        if (EqualsOrd(args[1], "validate"))
+        {
+            return args.Count == 3 && !string.IsNullOrWhiteSpace(args[2])
+                ? new FlowValidateCliCommand(args[2])
+                : Invalid("flow validate <map>");
+        }
+
+        if (EqualsOrd(args[1], "publish"))
+        {
+            return args.Count == 3 && !string.IsNullOrWhiteSpace(args[2])
+                ? new FlowPublishCliCommand(args[2])
+                : Invalid("flow publish <map>");
+        }
+
+        if (EqualsOrd(args[1], "list"))
+        {
+            return args.Count == 2
+                ? new FlowListCliCommand()
+                : Invalid("flow list");
+        }
+
+        if (EqualsOrd(args[1], "activate"))
+        {
+            return ParseFlowActivate(args);
+        }
+
+        if (EqualsOrd(args[1], "start"))
+        {
+            return ParseFlowStart(args);
+        }
+
+        if (EqualsOrd(args[1], "get"))
+        {
+            return args.Count == 3 && !string.IsNullOrWhiteSpace(args[2])
+                ? new FlowGetCliCommand(args[2])
+                : Invalid("flow get <processId>");
+        }
+
+        if (EqualsOrd(args[1], "signal"))
+        {
+            return ParseFlowSignal(args);
+        }
+
+        if (EqualsOrd(args[1], "test-finish"))
+        {
+            return testProfile
+                ? ParseFlowTestFinish(args)
+                : Invalid("unknown command");
+        }
+
+        return Invalid("flow validate|publish|list|activate|start|get|signal");
+    }
+
+    /// <summary>
+    /// Разбирает <c>flow activate</c>.
+    /// </summary>
+    private static ParsedCliCommand ParseFlowActivate(IReadOnlyList<string> args)
+    {
+        if (!TryParseNamed(args, skip: 2, out string? name, out IReadOnlyDictionary<string, string> flags, out string? error))
+        {
+            return Invalid(error ?? "flow activate <flow_name> --version <version>");
+        }
+
+        if (name is null || !TryParsePositiveInt(flags, "--version", out int version))
+        {
+            return Invalid("flow activate <flow_name> --version <version>");
+        }
+
+        return new FlowActivateCliCommand(name, version);
+    }
+
+    /// <summary>
+    /// Разбирает <c>flow start</c>.
+    /// </summary>
+    private static ParsedCliCommand ParseFlowStart(IReadOnlyList<string> args)
+    {
+        if (!TryParseNamed(args, skip: 2, out string? name, out IReadOnlyDictionary<string, string> flags, out string? error))
+        {
+            return Invalid(error ?? "flow start <flow_name> --business-key <key> --data <file>");
+        }
+
+        if (name is null
+            || !flags.TryGetValue("--business-key", out string? key)
+            || string.IsNullOrWhiteSpace(key)
+            || !flags.TryGetValue("--data", out string? data)
+            || string.IsNullOrWhiteSpace(data))
+        {
+            return Invalid("flow start <flow_name> --business-key <key> --data <file>");
+        }
+
+        return new FlowStartCliCommand(name, key, data);
+    }
+
+    /// <summary>
+    /// Разбирает <c>flow signal</c>.
+    /// </summary>
+    private static ParsedCliCommand ParseFlowSignal(IReadOnlyList<string> args)
+    {
+        if (!TryParseNamed(args, skip: 2, out string? processId, out IReadOnlyDictionary<string, string> flags, out string? error))
+        {
+            return Invalid(error ?? "flow signal <processId> --type <type> --message-id <id> --payload <file>");
+        }
+
+        if (processId is null
+            || !flags.TryGetValue("--type", out string? type)
+            || string.IsNullOrWhiteSpace(type)
+            || !flags.TryGetValue("--message-id", out string? messageId)
+            || string.IsNullOrWhiteSpace(messageId)
+            || !flags.TryGetValue("--payload", out string? payload)
+            || string.IsNullOrWhiteSpace(payload))
+        {
+            return Invalid("flow signal <processId> --type <type> --message-id <id> --payload <file>");
+        }
+
+        return new FlowSignalCliCommand(processId, type, messageId, payload);
+    }
+
+    /// <summary>
+    /// Разбирает <c>flow test-finish</c>.
+    /// </summary>
+    private static ParsedCliCommand ParseFlowTestFinish(IReadOnlyList<string> args)
+    {
+        if (!TryParseNamed(args, skip: 2, out string? jobId, out IReadOnlyDictionary<string, string> flags, out string? error))
+        {
+            return Invalid(error ?? "flow test-finish <jobId> --owner <owner> --lease-version <n> --outcome <outcome> --result <file>");
+        }
+
+        if (jobId is null
+            || !flags.TryGetValue("--owner", out string? owner)
+            || string.IsNullOrWhiteSpace(owner)
+            || !TryParseNonNegativeLong(flags, "--lease-version", out long leaseVersion)
+            || !flags.TryGetValue("--outcome", out string? outcome)
+            || string.IsNullOrWhiteSpace(outcome)
+            || !flags.TryGetValue("--result", out string? result)
+            || string.IsNullOrWhiteSpace(result))
+        {
+            return Invalid("flow test-finish <jobId> --owner <owner> --lease-version <n> --outcome <outcome> --result <file>");
+        }
+
+        return new FlowTestFinishCliCommand(jobId, owner, leaseVersion, outcome, result);
+    }
+
+    /// <summary>
+    /// Читает один позиционный аргумент и именованные строковые флаги.
+    /// </summary>
+    private static bool TryParseNamed(
+        IReadOnlyList<string> args,
+        int skip,
+        out string? positional,
+        out IReadOnlyDictionary<string, string> flags,
+        out string? error)
+    {
+        positional = null;
+        Dictionary<string, string> collected = new(StringComparer.Ordinal);
+        flags = collected;
+        error = null;
+        for (int index = skip; index < args.Count; index++)
+        {
+            string token = args[index];
+            if (token.StartsWith("--", StringComparison.Ordinal))
+            {
+                string name;
+                string raw;
+                int equals = token.IndexOf('=', StringComparison.Ordinal);
+                if (equals > 0)
+                {
+                    name = token[..equals];
+                    raw = token[(equals + 1)..];
+                }
+                else
+                {
+                    name = token;
+                    if (index + 1 >= args.Count)
+                    {
+                        error = name + " requires a value";
+                        return false;
+                    }
+
+                    index++;
+                    raw = args[index];
+                }
+
+                if (string.IsNullOrWhiteSpace(raw) || collected.ContainsKey(name))
+                {
+                    error = "invalid flag " + name;
+                    return false;
+                }
+
+                collected[name] = raw;
+                continue;
+            }
+
+            if (positional is not null)
+            {
+                error = "unexpected argument " + token;
+                return false;
+            }
+
+            positional = token;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Читает обязательный целый флаг ≥ 1.
+    /// </summary>
+    private static bool TryParsePositiveInt(IReadOnlyDictionary<string, string> flags, string name, out int value)
+    {
+        value = 0;
+        return flags.TryGetValue(name, out string? raw)
+            && int.TryParse(raw, out value)
+            && value >= 1;
+    }
+
+    /// <summary>
+    /// Читает неотрицательный bigint-флаг.
+    /// </summary>
+    private static bool TryParseNonNegativeLong(IReadOnlyDictionary<string, string> flags, string name, out long value)
+    {
+        value = 0;
+        return flags.TryGetValue(name, out string? raw)
+            && long.TryParse(raw, out value)
+            && value >= 0;
     }
 
     /// <summary>

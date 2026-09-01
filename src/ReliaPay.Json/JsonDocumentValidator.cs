@@ -23,6 +23,11 @@ public static class CourseJsonSchemas
     public static string ActionManifest { get; } = Load("ReliaPay.action_manifest.schema.json");
 
     /// <summary>
+    /// Каноническая schema workflow-карты <c>course-1</c>.
+    /// </summary>
+    public static string WorkflowMap { get; } = Load("ReliaPay.workflow_map.schema.json");
+
+    /// <summary>
     /// Читает embedded resource сборки.
     /// </summary>
     /// <param name="logicalName">LogicalName ресурса.</param>

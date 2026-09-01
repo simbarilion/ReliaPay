@@ -45,6 +45,27 @@ public sealed class Program
             ActionDisableCliCommand disable => await ActionDisableCommand
                 .ExecuteAsync(disable.Route, disable.Version, disable.ReplacementVersion, cancellationToken)
                 .ConfigureAwait(false),
+            FlowValidateCliCommand validate => await FlowMapCommand
+                .ValidateAsync(validate.MapPath, cancellationToken)
+                .ConfigureAwait(false),
+            FlowPublishCliCommand publish => await FlowMapCommand
+                .PublishAsync(publish.MapPath, cancellationToken)
+                .ConfigureAwait(false),
+            FlowListCliCommand => await FlowProcessCommand.ListAsync(cancellationToken).ConfigureAwait(false),
+            FlowActivateCliCommand activate => await FlowProcessCommand
+                .ActivateAsync(activate.FlowName, activate.Version, cancellationToken)
+                .ConfigureAwait(false),
+            FlowStartCliCommand start => await FlowProcessCommand
+                .StartAsync(start.FlowName, start.BusinessKey, start.DataPath, cancellationToken)
+                .ConfigureAwait(false),
+            FlowGetCliCommand get => await FlowProcessCommand.GetAsync(get.ProcessId, cancellationToken)
+                .ConfigureAwait(false),
+            FlowSignalCliCommand signal => await FlowProcessCommand
+                .SignalAsync(signal.ProcessId, signal.SignalType, signal.MessageId, signal.PayloadPath, cancellationToken)
+                .ConfigureAwait(false),
+            FlowTestFinishCliCommand finish => await FlowProcessCommand
+                .TestFinishAsync(finish.JobId, finish.Owner, finish.LeaseVersion, finish.Outcome, finish.ResultPath, cancellationToken)
+                .ConfigureAwait(false),
             InvalidCliCommand invalid => await FailUsageAsync(invalid).ConfigureAwait(false),
             _ => await CliFailure.WriteAsync(ErrorCodes.RequestInvalid, "command is not implemented")
                 .ConfigureAwait(false),
@@ -88,7 +109,7 @@ public sealed class Program
     private static async Task<int> FailUsageAsync(InvalidCliCommand invalid)
     {
         await Console.Error.WriteLineAsync(
-                "Supported commands: migration apply <directory>; action validate|publish <manifest>; action list; action activate|disable <module.action> --version <version> [--replacement-version <version>].")
+                "Supported commands: migration apply <directory>; action validate|publish <manifest>; action list; action activate|disable <module.action> --version <version> [--replacement-version <version>]; flow validate|publish <map>; flow list; flow activate <name> --version <version>; flow start <name> --business-key <key> --data <file>; flow get <processId>; flow signal <processId> --type <type> --message-id <id> --payload <file>.")
             .ConfigureAwait(false);
         return await CliFailure.WriteAsync(invalid.Code, invalid.Message).ConfigureAwait(false);
     }
