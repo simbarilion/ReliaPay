@@ -85,4 +85,19 @@ public static class ErrorCodes
     /// Каталог миграций отсутствует либо не читается.
     /// </summary>
     public const string MigrationInvalid = "migration.invalid";
+
+    /// <summary>
+    /// Источник JSON Pointer в process data отсутствует; action не вызывается.
+    /// </summary>
+    public const string WorkflowMappingMissing = "workflow.mapping_missing";
+
+    /// <summary>
+    /// Finish с чужим owner или устаревшим leaseVersion отклонён без изменения состояния.
+    /// </summary>
+    public const string WorkflowLeaseStale = "workflow.lease_stale";
+
+    /// <summary>
+    /// Конфликт идемпотентности процесса, сигнала или неизменяемой версии карты.
+    /// </summary>
+    public const string WorkflowConflict = "workflow.conflict";
 }

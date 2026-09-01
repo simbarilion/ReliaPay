@@ -32,6 +32,9 @@ public sealed class CourseContractTests
         ErrorCodes.ManifestConflict.Should().Be("manifest.conflict");
         ErrorCodes.OperationNotFound.Should().Be("operation.not_found");
         ErrorCodes.MigrationConflict.Should().Be("migration.conflict");
+        ErrorCodes.WorkflowMappingMissing.Should().Be("workflow.mapping_missing");
+        ErrorCodes.WorkflowLeaseStale.Should().Be("workflow.lease_stale");
+        ErrorCodes.WorkflowConflict.Should().Be("workflow.conflict");
     }
 
     [Fact]

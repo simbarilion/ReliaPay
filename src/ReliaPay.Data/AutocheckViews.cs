@@ -32,7 +32,54 @@ public static class AutocheckViews
     public const string OperationEvents = "operation_events";
 
     /// <summary>
-    /// Полный набор проекций недели 1 в стабильном порядке ТЗ.
+    /// Опубликованные версии workflow-карт.
+    /// </summary>
+    public const string FlowVersions = "flow_versions";
+
+    /// <summary>
+    /// Экземпляры process с pinned flow version.
+    /// </summary>
+    public const string Processes = "processes";
+
+    /// <summary>
+    /// Step instances исполняемого process.
+    /// </summary>
+    public const string Steps = "steps";
+
+    /// <summary>
+    /// Jobs с lease и fencing.
+    /// </summary>
+    public const string Jobs = "jobs";
+
+    /// <summary>
+    /// Попытки исполнения job, включая STALE.
+    /// </summary>
+    public const string Attempts = "attempts";
+
+    /// <summary>
+    /// Идемпотентные сигналы process.
+    /// </summary>
+    public const string Signals = "signals";
+
+    /// <summary>
+    /// Append-only история workflow.
+    /// </summary>
+    public const string WorkflowEvents = "workflow_events";
+
+    /// <summary>
+    /// Проекции недели 1 в стабильном порядке ТЗ той недели.
+    /// </summary>
+    public static readonly IReadOnlyList<string> Week1 =
+    [
+        ContractInfo,
+        ActionDefinitions,
+        ActionDispatches,
+        Operations,
+        OperationEvents
+    ];
+
+    /// <summary>
+    /// Полный набор проекций, включая workflow недели 2.
     /// </summary>
     public static readonly IReadOnlyList<string> All =
     [
@@ -40,6 +87,13 @@ public static class AutocheckViews
         ActionDefinitions,
         ActionDispatches,
         Operations,
-        OperationEvents
+        OperationEvents,
+        FlowVersions,
+        Processes,
+        Steps,
+        Jobs,
+        Attempts,
+        Signals,
+        WorkflowEvents
     ];
 }

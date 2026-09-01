@@ -7,16 +7,35 @@ namespace ReliaPay.UnitTests.Data;
 public sealed class AutocheckViewsTests
 {
     [Fact]
-    public void Course_week_exposes_exactly_five_autocheck_projections()
+    public void Course_week_one_projections_remain_available()
+    {
+        AutocheckViews.Week1.Should().Equal(
+            "contract_info",
+            "action_definitions",
+            "action_dispatches",
+            "operations",
+            "operation_events");
+        AutocheckViews.Week1.Should().HaveCount(5);
+    }
+
+    [Fact]
+    public void Course_week_two_adds_workflow_evidence_views()
     {
         AutocheckViews.All.Should().Equal(
             "contract_info",
             "action_definitions",
             "action_dispatches",
             "operations",
-            "operation_events");
-        AutocheckViews.All.Should().HaveCount(5);
+            "operation_events",
+            "flow_versions",
+            "processes",
+            "steps",
+            "jobs",
+            "attempts",
+            "signals",
+            "workflow_events");
         AutocheckViews.All.Should().OnlyHaveUniqueItems();
+        AutocheckViews.All.Should().Contain(AutocheckViews.Week1);
     }
 
     [Fact]
