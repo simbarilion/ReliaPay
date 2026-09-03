@@ -66,11 +66,6 @@ project.lock.json
 *.snupkg
 
 # ================================
-# Course artifacts (must not be committed)
-# ================================
-week-1-public-report.json
-
-# ================================
 # Temporary files / OS
 # ================================
 tmp/
@@ -79,8 +74,6 @@ Thumbs.db
 Desktop.ini
 .DS_Store
 
-/aether-well/
-
+week-1-public-report.json
 week-2-public-report.json
 week-2-plan.md
-
