@@ -7,9 +7,11 @@
   "target_schema": "app",
   "target_function": "catalog_probe",
   "request_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object"
   },
   "response_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object"
   },
   "outcomes": ["PROBED"],

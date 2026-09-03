@@ -105,6 +105,20 @@ public sealed class WorkflowFunctionsTests
         sql.Should().Contain("GRANT EXECUTE ON FUNCTION workflow.signal_process(uuid, text, text, jsonb) TO course_publication");
     }
 
+    [Fact]
+    public void Idempotency_key_includes_manifest_scope_and_action_version()
+    {
+        string sql = ReadMigration("20260826180000_idempotency_scope_and_version.sql");
+        sql.Should().Contain("ADD COLUMN IF NOT EXISTS action_version integer NOT NULL DEFAULT 1");
+        sql.Should().Contain("PRIMARY KEY (principal, module, action, action_version, idempotency_key)");
+        sql.Should().Contain("WHEN 'principal_action' THEN");
+        sql.Should().Contain("WHEN 'consumer_action' THEN");
+        sql.Should().Contain("WHEN 'global_action' THEN");
+        sql.Should().Contain("AND k.action_version = v_row.version");
+        sql.Should().Contain("CREATE OR REPLACE FUNCTION api.invoke(");
+        sql.Should().Contain("GRANT EXECUTE ON FUNCTION api.invoke(text, text, integer, jsonb, jsonb) TO workflow_worker");
+    }
+
     private static string ReadMigration(string fileName)
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);

@@ -88,7 +88,7 @@ public sealed class ActionExecutor
             activity,
             new RequestTrace(
                 correlationId,
-                string.IsNullOrWhiteSpace(idempotencyKey) ? null : idempotencyKey.Trim(),
+                RequestIdHash.Sha256Hex(idempotencyKey),
                 $"/api/{route.Module}/{route.Action}",
                 route.Module,
                 route.Action));

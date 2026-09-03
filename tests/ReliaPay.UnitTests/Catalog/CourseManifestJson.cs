@@ -11,6 +11,7 @@ internal static class CourseManifestJson
         string idempotencyMode = "none",
         string httpMethod = "POST")
     {
+        string idempotencyScope = idempotencyMode == "none" ? "none" : "principal_action";
         return $$"""
             {
               "contract_version": "course-1",
@@ -34,7 +35,7 @@ internal static class CourseManifestJson
               "outcomes": ["PROBED"],
               "required_policy": ["catalog:probe"],
               "idempotency_mode": "{{idempotencyMode}}",
-              "idempotency_scope": "principal_action",
+              "idempotency_scope": "{{idempotencyScope}}",
               "timeout_ms": 1000,
               "enabled": false,
               "is_default": false{{extraProperties}}

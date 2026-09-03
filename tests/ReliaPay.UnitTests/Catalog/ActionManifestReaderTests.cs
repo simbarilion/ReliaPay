@@ -21,7 +21,7 @@ public sealed class ActionManifestReaderTests
     }
 
     [Fact]
-    public void Official_course_fields_and_unknown_property_are_accepted()
+    public void Unknown_root_property_is_rejected()
     {
         ActionManifestReadResult result = Reader.Read(
             CourseManifestJson.OfficialProbe(
@@ -31,20 +31,15 @@ public sealed class ActionManifestReaderTests
                     """,
                 idempotencyMode: "optional"));
 
-        result.IsSuccess.Should().BeTrue();
-        result.ErrorCode.Should().BeNull();
-        result.Manifest!.IdempotencyMode.Should().Be("optional");
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorCode.Should().Be(ErrorCodes.ManifestInvalid);
     }
 
     [Fact]
     public void File_enabled_flag_does_not_activate_on_read()
     {
         ActionManifestReadResult result = Reader.Read(
-            CourseManifestJson.OfficialProbe(
-                extraProperties: """
-                    ,
-                    "owner": "autocheck"
-                    """).Replace("\"enabled\": false", "\"enabled\": true"));
+            CourseManifestJson.OfficialProbe().Replace("\"enabled\": false", "\"enabled\": true"));
 
         result.IsSuccess.Should().BeTrue();
         result.Manifest!.Enabled.Should().BeFalse();
