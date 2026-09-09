@@ -8,11 +8,15 @@ services:
       dockerfile: db/postgres/Dockerfile
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-moduledev-postgres}
+      POSTGRES_PASSWORD: ${COURSE_POSTGRES_PASSWORD:-moduledev-postgres-local-only}
       POSTGRES_DB: ${POSTGRES_DB:-course}
-      COURSE_PUBLICATION_PASSWORD: ${COURSE_PUBLICATION_PASSWORD:-moduledev-publication}
-      COURSE_RUNTIME_PASSWORD: ${COURSE_RUNTIME_PASSWORD:-moduledev-runtime}
-      COURSE_WORKER_PASSWORD: ${COURSE_WORKER_PASSWORD:-moduledev-worker}
+      COURSE_POSTGRES_PASSWORD: ${COURSE_POSTGRES_PASSWORD:-moduledev-postgres-local-only}
+      COURSE_MIGRATOR_PASSWORD: ${COURSE_MIGRATOR_PASSWORD:-moduledev-migrator-local-only}
+      COURSE_PUBLISHER_PASSWORD: ${COURSE_PUBLISHER_PASSWORD:-moduledev-publisher-local-only}
+      COURSE_RUNTIME_PASSWORD: ${COURSE_RUNTIME_PASSWORD:-moduledev-runtime-local-only}
+      COURSE_WORKER_PASSWORD: ${COURSE_WORKER_PASSWORD:-moduledev-worker-local-only}
+      COURSE_OUTBOX_PASSWORD: ${COURSE_OUTBOX_PASSWORD:-moduledev-outbox-local-only}
+      COURSE_INBOX_PASSWORD: ${COURSE_INBOX_PASSWORD:-moduledev-inbox-local-only}
     volumes:
       - course_data:/var/lib/postgresql/data
     healthcheck:
@@ -30,14 +34,16 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
       ASPNETCORE_URLS: http://+:8080
-      COURSE_JWT_ISSUER: ${COURSE_JWT_ISSUER:-moduledev-course}
-      COURSE_JWT_AUDIENCE: ${COURSE_JWT_AUDIENCE:-moduledev-api}
-      COURSE_JWT_SIGNING_KEY: ${COURSE_JWT_SIGNING_KEY:-moduledev-course-local-hs256-key}
+      COURSE_JWT_ISSUER: ${COURSE_JWT_ISSUER}
+      COURSE_JWT_AUDIENCE: ${COURSE_JWT_AUDIENCE}
+      COURSE_JWT_SIGNING_KEY: ${COURSE_JWT_SIGNING_KEY}
       COURSE_DB_HOST: postgres
       COURSE_DB_PORT: ${COURSE_DB_PORT:-5432}
       COURSE_DB_NAME: ${COURSE_DB_NAME:-course}
       COURSE_RUNTIME_USER: ${COURSE_RUNTIME_USER:-course_runtime}
-      COURSE_RUNTIME_PASSWORD: ${COURSE_RUNTIME_PASSWORD:-moduledev-runtime}
+      COURSE_RUNTIME_PASSWORD: ${COURSE_RUNTIME_PASSWORD:-moduledev-runtime-local-only}
+      PROVIDER_HMAC_SECRET: ${PROVIDER_HMAC_SECRET}
+      COURSE_TEST_PROFILE: ${COURSE_TEST_PROFILE:-1}
       LOG_LEVEL: ${LOG_LEVEL:-Information}
     depends_on:
       postgres:
@@ -57,11 +63,12 @@ services:
       context: .
       dockerfile: src/ReliaPay.Gateway/Dockerfile
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:${COURSE_GATEWAY_PORT:-8080}:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
       ASPNETCORE_URLS: http://+:8080
       COURSE_API_BASE_URL: http://api:8080
+      COURSE_TEST_PROFILE: ${COURSE_TEST_PROFILE:-1}
       LOG_LEVEL: ${LOG_LEVEL:-Information}
     depends_on:
       api:
@@ -83,9 +90,12 @@ services:
       COURSE_DB_PORT: ${COURSE_DB_PORT:-5432}
       COURSE_DB_NAME: ${COURSE_DB_NAME:-course}
       COURSE_PUBLICATION_USER: ${COURSE_PUBLICATION_USER:-course_publication}
-      COURSE_PUBLICATION_PASSWORD: ${COURSE_PUBLICATION_PASSWORD:-moduledev-publication}
+      COURSE_PUBLICATION_PASSWORD: ${COURSE_PUBLISHER_PASSWORD:-moduledev-publisher-local-only}
+      COURSE_PUBLISHER_PASSWORD: ${COURSE_PUBLISHER_PASSWORD:-moduledev-publisher-local-only}
+      COURSE_MIGRATOR_PASSWORD: ${COURSE_MIGRATOR_PASSWORD:-moduledev-migrator-local-only}
       COURSE_MIGRATIONS_PATH: /migrations
       COURSE_MIGRATION_READY_FILE: /tmp/reliapay-migrated
+      COURSE_TEST_PROFILE: ${COURSE_TEST_PROFILE:-1}
       LOG_LEVEL: ${LOG_LEVEL:-Information}
     depends_on:
       postgres:
@@ -108,9 +118,9 @@ services:
       COURSE_DB_PORT: ${COURSE_DB_PORT:-5432}
       COURSE_DB_NAME: ${COURSE_DB_NAME:-course}
       COURSE_WORKER_USER: ${COURSE_WORKER_USER:-workflow_worker}
-      COURSE_WORKER_PASSWORD: ${COURSE_WORKER_PASSWORD:-moduledev-worker}
+      COURSE_WORKER_PASSWORD: ${COURSE_WORKER_PASSWORD:-moduledev-worker-local-only}
       COURSE_WORKER_INSTANCE_ID: worker-a
-      COURSE_TEST_PROFILE: ${COURSE_TEST_PROFILE:-}
+      COURSE_TEST_PROFILE: ${COURSE_TEST_PROFILE:-1}
       COURSE_FAILPOINT: ${COURSE_FAILPOINT:-}
     depends_on:
       postgres:
@@ -126,15 +136,73 @@ services:
       COURSE_DB_PORT: ${COURSE_DB_PORT:-5432}
       COURSE_DB_NAME: ${COURSE_DB_NAME:-course}
       COURSE_WORKER_USER: ${COURSE_WORKER_USER:-workflow_worker}
-      COURSE_WORKER_PASSWORD: ${COURSE_WORKER_PASSWORD:-moduledev-worker}
+      COURSE_WORKER_PASSWORD: ${COURSE_WORKER_PASSWORD:-moduledev-worker-local-only}
       COURSE_WORKER_INSTANCE_ID: worker-b
-      COURSE_TEST_PROFILE: ${COURSE_TEST_PROFILE:-}
+      COURSE_TEST_PROFILE: ${COURSE_TEST_PROFILE:-1}
       COURSE_FAILPOINT: ${COURSE_FAILPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
       cli:
         condition: service_healthy
+    restart: unless-stopped
+
+  outbox-dispatcher:
+    image: reliapay-python-perimeter:local
+    build:
+      context: .
+      dockerfile: python/Dockerfile
+    environment:
+      PERIMETER_ROLE: outbox-dispatcher
+      PGHOST: postgres
+      PGPORT: ${COURSE_DB_PORT:-5432}
+      PGDATABASE: ${COURSE_DB_NAME:-course}
+      PGUSER: outbox_dispatcher
+      PGPASSWORD: ${COURSE_OUTBOX_PASSWORD:-moduledev-outbox-local-only}
+      PROVIDER_URL: ${PROVIDER_URL:-http://provider-simulator:8081}
+      OUTBOX_OWNER: ${OUTBOX_OWNER:-outbox-dispatcher}
+      COURSE_TEST_PROFILE: ${COURSE_TEST_PROFILE:-1}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  receipt-adapter:
+    image: reliapay-python-perimeter:local
+    environment:
+      PERIMETER_ROLE: receipt-adapter
+      PROVIDER_CALLBACK_CAPABILITY: ${PROVIDER_CALLBACK_CAPABILITY}
+      PROVIDER_CALLBACK_TOKEN: ${PROVIDER_CALLBACK_TOKEN}
+      PROVIDER_HMAC_SECRET: ${PROVIDER_HMAC_SECRET}
+      RECEIPT_API_URL: ${RECEIPT_API_URL:-http://gateway:8080/api/receipt/accept}
+      COURSE_TEST_PROFILE: ${COURSE_TEST_PROFILE:-1}
+    depends_on:
+      gateway:
+        condition: service_healthy
+    restart: unless-stopped
+
+  inbox-reconciler:
+    image: reliapay-python-perimeter:local
+    environment:
+      PERIMETER_ROLE: inbox-reconciler
+      PGHOST: postgres
+      PGPORT: ${COURSE_DB_PORT:-5432}
+      PGDATABASE: ${COURSE_DB_NAME:-course}
+      PGUSER: inbox_reconciler
+      PGPASSWORD: ${COURSE_INBOX_PASSWORD:-moduledev-inbox-local-only}
+      COURSE_TEST_PROFILE: ${COURSE_TEST_PROFILE:-1}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  provider-simulator:
+    image: ghcr.io/fintech-dev-lab/internship-provider-simulator:v0.2.0@sha256:70e5e0dd9ab8425be84de431ec74516f9bedf5d5529077358e2e2b2037fe0c74
+    environment:
+      CALLBACK_URL: http://receipt-adapter/callbacks/provider-v02/${PROVIDER_CALLBACK_CAPABILITY}
+    depends_on:
+      receipt-adapter:
+        condition: service_started
     restart: unless-stopped
 
 volumes:

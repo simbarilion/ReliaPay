@@ -26,6 +26,11 @@ public static class PostgresSchemas
     public const string Workflow = "workflow";
 
     /// <summary>
+    /// Фиксированные SQL-границы Python dispatcher и reconciler. Без table DML у integration-ролей.
+    /// </summary>
+    public const string Delivery = "delivery";
+
+    /// <summary>
     /// Схемы учебной модели в стабильном порядке.
     /// </summary>
     public static readonly IReadOnlyList<string> All =
@@ -33,6 +38,7 @@ public static class PostgresSchemas
         Api,
         App,
         Autocheck,
-        Workflow
+        Workflow,
+        Delivery
     ];
 }

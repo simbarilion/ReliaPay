@@ -11,6 +11,9 @@ public sealed class PostgresRolesTests
         PostgresRoles.Worker.Should().Be("workflow_worker");
         PostgresRoles.Worker.Should().NotBe(PostgresRoles.Runtime);
         PostgresRoles.Worker.Should().NotBe(PostgresRoles.Publication);
+        PostgresRoles.OutboxDispatcher.Should().Be("outbox_dispatcher");
+        PostgresRoles.InboxReconciler.Should().Be("inbox_reconciler");
+        PostgresRoles.OutboxDispatcher.Should().NotBe(PostgresRoles.InboxReconciler);
     }
 
     [Fact]
@@ -21,5 +24,7 @@ public sealed class PostgresRolesTests
         PostgresSchemas.All.Should().Contain(PostgresSchemas.Api);
         PostgresSchemas.All.Should().Contain(PostgresSchemas.App);
         PostgresSchemas.All.Should().Contain(PostgresSchemas.Autocheck);
+        PostgresSchemas.Delivery.Should().Be("delivery");
+        PostgresSchemas.All.Should().Contain(PostgresSchemas.Delivery);
     }
 }

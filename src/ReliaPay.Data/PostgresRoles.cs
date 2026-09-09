@@ -25,4 +25,15 @@ public static class PostgresRoles
     /// <c>workflow.finish_job</c> и <c>workflow.fail_job</c>. Прямого DML нет.
     /// </summary>
     public const string Worker = "workflow_worker";
+
+    /// <summary>
+    /// Python outbox-dispatcher: только <c>delivery.claim_outbox</c>,
+    /// <c>delivery.succeed_outbox</c> и <c>delivery.fail_outbox</c>.
+    /// </summary>
+    public const string OutboxDispatcher = "outbox_dispatcher";
+
+    /// <summary>
+    /// Python inbox-reconciler: только <c>delivery.reconcile_inbox</c>.
+    /// </summary>
+    public const string InboxReconciler = "inbox_reconciler";
 }

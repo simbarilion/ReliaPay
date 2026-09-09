@@ -22,6 +22,8 @@ public sealed class ReadmeAdmissionTests
         readme.Should().Contain("### Запуск");
         readme.Should().Contain("### Workflow-карты");
         readme.Should().Contain("### Worker");
+        readme.Should().Contain("### Python-периметр");
+        readme.Should().Contain("### Provider");
         readme.Should().Contain("### Проверка");
         readme.Should().Contain("### Диагностика");
         readme.Should().Contain("### Ограничения");

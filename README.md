@@ -30,8 +30,8 @@
 - не хранит каталог действий в коде C#;
 - не дублирует идемпотентность блокировкой процесса;
 - не пишет JWT, секреты, сырой Idempotency-Key и полный payload в логи;
-- не публикует на хост порты api, cli, worker и PostgreSQL;
-- не реализует BPMN, Inbox/Outbox и вызов внешнего платёжного провайдера.
+- не публикует на хост порты api, cli, worker, Python-периметра, provider и PostgreSQL;
+- не реализует BPMN и не переносит выбор flow/limit/final status в Python.
 
 Интерактивный Swagger UI не публикуется. Контрактные документы:
 
@@ -127,6 +127,11 @@ Compose-контур:
     worker-a ──workflow_worker──► postgres
     worker-b ──тот же image──► postgres
          claim / api.invoke / finish / fail
+
+    outbox-dispatcher ──outbox_dispatcher──► postgres
+    inbox-reconciler ──inbox_reconciler──► postgres
+    receipt-adapter ──HTTP──► gateway  (без credentials БД)
+    provider-simulator ──callback──► receipt-adapter
 ```
 
 Слои C#:
@@ -172,6 +177,8 @@ Gateway PostgreSQL не использует.
 | `course_publication` | да | миграции, catalog и карты |
 | `course_runtime` | да | `api.invoke` и чтение catalog/views |
 | `workflow_worker` | да | `claim_jobs`, `api.invoke`, `finish_job`, `fail_job` |
+| `outbox_dispatcher` | да | только `delivery.claim_outbox` / `succeed_outbox` / `fail_outbox` |
+| `inbox_reconciler` | да | только `delivery.reconcile_inbox` |
 
 ### Запуск
 
@@ -209,27 +216,34 @@ docker compose up -d --build
 
 Том PostgreSQL — `course_data`. Команда `docker compose down -v` удалит учебную базу.
 
-На хост опубликован только порт `8080` на `127.0.0.1`. Порты PostgreSQL, api, cli и worker наружу не пробрасываются. Внутри сети Compose используются адреса `postgres:5432` и `http://api:8080`.
+На хост опубликован только порт `8080` на `127.0.0.1`. Порты PostgreSQL, api, cli, worker, Python-периметра и provider наружу не пробрасываются. Внутри сети Compose используются адреса `postgres:5432` и `http://api:8080`.
 
 ### Конфигурация
 
 | Переменная | Назначение |
 | --- | --- |
-| `COURSE_JWT_ISSUER` | Ожидаемый `iss`, по умолчанию `moduledev-course` |
-| `COURSE_JWT_AUDIENCE` | Ожидаемый `aud`, по умолчанию `moduledev-api` |
-| `COURSE_JWT_SIGNING_KEY` | Секрет HS256, не короче 32 байт |
+| `COURSE_GATEWAY_PORT` | Host-порт gateway, по умолчанию `8080` |
+| `COURSE_JWT_ISSUER` | Ожидаемый `iss`; в Compose нет default |
+| `COURSE_JWT_AUDIENCE` | Ожидаемый `aud`; в Compose нет default |
+| `COURSE_JWT_SIGNING_KEY` | Секрет HS256, не короче 32 байт; в Compose нет default |
 | `POSTGRES_DB` | Имя БД, по умолчанию `course` |
 | `POSTGRES_USER` | Bootstrap-пользователь образа PostgreSQL |
-| `POSTGRES_PASSWORD` | Пароль bootstrap-пользователя |
-| `COURSE_PUBLICATION_USER` | Роль миграций и catalog, по умолчанию `course_publication` |
-| `COURSE_PUBLICATION_PASSWORD` | Пароль publication-роли |
-| `COURSE_RUNTIME_USER` | Роль runtime, по умолчанию `course_runtime` |
+| `COURSE_POSTGRES_PASSWORD` | Пароль bootstrap-пользователя (local-only placeholder в Compose) |
+| `COURSE_MIGRATOR_PASSWORD` | Пароль migrator; задаётся postgres и cli |
+| `COURSE_PUBLISHER_PASSWORD` | Пароль publication-роли; cli читает его как `COURSE_PUBLICATION_PASSWORD` |
 | `COURSE_RUNTIME_PASSWORD` | Пароль runtime-роли |
-| `COURSE_WORKER_USER` | Роль worker, по умолчанию `workflow_worker` |
 | `COURSE_WORKER_PASSWORD` | Пароль роли worker |
+| `COURSE_OUTBOX_PASSWORD` | Пароль роли `outbox_dispatcher` |
+| `COURSE_INBOX_PASSWORD` | Пароль роли `inbox_reconciler` |
 | `COURSE_WORKER_INSTANCE_ID` | Владелец lease: `worker-a` или `worker-b` |
 | `COURSE_FAILPOINT` | Учебная точка зависания worker; пусто в обычном запуске |
-| `COURSE_TEST_PROFILE` | `1` — poll ≤ 100 мс и lease 2000 мс |
+| `COURSE_TEST_PROFILE` | `1` — короткие интервалы worker и периметра |
+| `PROVIDER_URL` | URL provider для dispatcher, по умолчанию `http://provider-simulator:8081` |
+| `OUTBOX_OWNER` | Owner Outbox, по умолчанию `outbox-dispatcher` |
+| `PROVIDER_CALLBACK_CAPABILITY` | Сегмент callback path; в Compose нет default |
+| `PROVIDER_CALLBACK_TOKEN` | JWT adapter → `receipt.accept`; в Compose нет default |
+| `PROVIDER_HMAC_SECRET` | HMAC receipt v1 для adapter и api; в Compose нет default |
+| `RECEIPT_API_URL` | `http://gateway:8080/api/receipt/accept` |
 | `COURSE_DB_HOST` | Хост из контейнеров api/cli, в Compose это `postgres` |
 | `COURSE_DB_PORT` | Порт PostgreSQL внутри сети |
 | `COURSE_DB_NAME` | Имя БД для api/cli |
@@ -239,7 +253,7 @@ docker compose up -d --build
 | `OTEL_SERVICE_NAME` | Имя сервиса для OpenTelemetry |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Необязательный OTLP-коллектор |
 
-JWT читает только `api`. Gateway секрета подписи не знает.
+JWT читает только `api`. Gateway секрета подписи не знает. `PROVIDER_HMAC_SECRET` получают `api` и `receipt-adapter`.
 
 Claims токена: `sub`, `consumer`, `scope`, `iat`, `exp`. `scope` — строка с пробелами или массив строк. Число или объект в `scope` отклоняются как `auth.invalid`.
 
@@ -257,7 +271,7 @@ Claims токена: `sub`, `consumer`, `scope`, `iat`, `exp`. `scope` — ст�
 
 Схема создаётся в два шага.
 
-1. Пустой named volume: `db/init/01-roles.sh` создаёт роли, схемы `api` / `app` / `autocheck` / `workflow` и таблицу `api.schema_migrations`. Скрипт образа PostgreSQL выполняется только при первом создании data directory.
+1. Пустой named volume: `db/init/01-roles.sh` создаёт роли, схемы `api` / `app` / `autocheck` / `workflow` / `delivery` и таблицу `api.schema_migrations`. Скрипт образа PostgreSQL выполняется только при первом создании data directory.
 2. Сервис `cli` при старте без аргументов применяет `db/migrations` и остаётся в idle. `api` и worker стартуют только после healthy `cli`.
 
 Каждый `.sql` файл применяется лексикографически, в одной транзакции, от имени publication с `SET LOCAL ROLE course_owner`. Повтор того же checksum безопасен. Изменение уже применённого файла даёт `migration.conflict`.
@@ -338,7 +352,23 @@ Failpoints для автопроверки. Worker пишет одну JSON-ст
 | `after_job_claim` | после claim, до invoke |
 | `after_action_before_finish` | после успешного invoke, до `finish_job`, на открытой транзакции |
 
-`COURSE_TEST_PROFILE=1` задаёт poll 100 мс и lease 2000 мс. Обычный запуск переменную не требует.
+`COURSE_TEST_PROFILE=1` задаёт poll 100 мс и lease 2000 мс. В tracked Compose default равен `1`.
+
+### Python-периметр
+
+Три процесса собираются из одного образа `reliapay-python-perimeter:local` (Python 3.12+, PID 1 — `python -m perimeter`). Host-портов нет.
+
+| Сервис | Роль БД | Граница |
+| --- | --- | --- |
+| `outbox-dispatcher` | `outbox_dispatcher` | PostgreSQL Outbox → provider |
+| `receipt-adapter` | нет | callback provider → gateway |
+| `inbox-reconciler` | `inbox_reconciler` | `delivery.reconcile_inbox` |
+
+Adapter не получает настройки PostgreSQL. Dispatcher и reconciler не вызывают `api.invoke` и не делают table DML.
+
+### Provider
+
+В Compose подключён выданный образ `internship-provider-simulator:v0.2.0` по digest. Он принимает `POST /payments` и шлёт legacy callback на `http://receipt-adapter/callbacks/provider-v02/{PROVIDER_CALLBACK_CAPABILITY}`. Это не Python-сервис и не отправитель signed receipt v1.
 
 ### Проверка
 
@@ -421,15 +451,15 @@ Health не пишется в application-лог трассировки, что�
 
 ### Ограничения
 
-Неделя 2 добавляет персистентное workflow-ядро к runtime недели 1. Это не полный банковский процессинг и не BPMN.
+Неделя 3 добавляет Python-периметр и provider-simulator к ядру недель 1–2. Это не полный банковский процессинг и не BPMN.
 
-Не входит в контур:
+Не входит в текущий этап контура:
 
-- payment maps, `payment.submit`, provider-simulator, receipts;
-- ручное complete manual-шага, Inbox/Outbox, миграция версии уже запущенного process;
+- карты `payment-processing` / `payment-review` и HTTP `workflow.manual` (будут следующими этапами);
+- миграция версии уже запущенного process;
 - Consul, CORS-трансформации, rate limit, кэш gateway;
 - отдельные C# handlers на предметные actions;
-- публикация портов api/cli/worker/postgres на хост.
+- публикация портов api/cli/worker/python/provider/postgres на хост.
 
 Клиент не может выбрать target-функцию из payload и не передаёт имя workflow или финальный status в `payment.request`.
 
