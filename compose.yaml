@@ -199,7 +199,7 @@ services:
   provider-simulator:
     image: ghcr.io/fintech-dev-lab/internship-provider-simulator:v0.2.0@sha256:70e5e0dd9ab8425be84de431ec74516f9bedf5d5529077358e2e2b2037fe0c74
     environment:
-      CALLBACK_URL: http://receipt-adapter/callbacks/provider-v02/${PROVIDER_CALLBACK_CAPABILITY}
+      CALLBACK_URL: http://receipt-adapter:8080/callbacks/provider-v02/${PROVIDER_CALLBACK_CAPABILITY}
     depends_on:
       receipt-adapter:
         condition: service_started

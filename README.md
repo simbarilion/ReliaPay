@@ -368,7 +368,7 @@ Adapter не получает настройки PostgreSQL. Dispatcher и recon
 
 ### Provider
 
-В Compose подключён выданный образ `internship-provider-simulator:v0.2.0` по digest. Он принимает `POST /payments` и шлёт legacy callback на `http://receipt-adapter/callbacks/provider-v02/{PROVIDER_CALLBACK_CAPABILITY}`. Это не Python-сервис и не отправитель signed receipt v1.
+В Compose подключён выданный образ `internship-provider-simulator:v0.2.0` по digest. Он принимает `POST /payments` и шлёт legacy callback на `http://receipt-adapter:8080/callbacks/provider-v02/{PROVIDER_CALLBACK_CAPABILITY}`. Это не Python-сервис и не отправитель signed receipt v1.
 
 ### Проверка
 
