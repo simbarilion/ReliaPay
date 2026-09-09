@@ -1,3 +1,4 @@
 * text=auto
 *.sql text eol=lf
 *.sh text eol=lf
+autocheck/** text eol=lf

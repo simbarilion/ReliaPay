@@ -381,7 +381,9 @@ Adapter не получает настройки PostgreSQL. Dispatcher и recon
 ./check.sh
 ```
 
-Скрипт поднимает Compose, публикует неизвестные C#-коду action и карту без пересборки api/worker, гоняет process, crash/reclaim и fencing. Ожидаемый финал зависит от пакета проверки курса.
+Скрипт — public checker недели 3: поднимает отдельный Compose project, проверяет Outbox, подпись receipt, обе ветки review и recreate Python-сервисов, пишет `week-3-public-report.json`. Том пользовательского `reliapay` не трогает. Ожидаемый финал зависит от пакета проверки курса.
+
+`--keep-stack` оставляет isolated project после прогона.
 
 Локальный контур после `docker compose up -d --build`:
 
