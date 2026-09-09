@@ -45,6 +45,7 @@ http://localhost:8080/openapi/default.json
 - [ADR-0001. Граница доверия](docs/adr/0001-trust-boundary.md)
 - [ADR-0002. Технический и предметный результат](docs/adr/0002-technical-vs-domain-result.md)
 - [ADR-0003. Worker, lease и одна транзакция invoke+finish](docs/adr/0003-worker-lease-transaction.md)
+- [ADR-0004. Антикоррупционный слой Python и ACL доставки](docs/adr/0004-python-anti-corruption.md)
 - [Справочник контракта course-1](docs/contract-reference.md)
 
 Исходная формулировка недели 1 — в [TASK.md](TASK.md).
@@ -364,7 +365,11 @@ Failpoints для автопроверки. Worker пишет одну JSON-ст
 | `receipt-adapter` | нет | callback provider → gateway |
 | `inbox-reconciler` | `inbox_reconciler` | `delivery.reconcile_inbox` |
 
-Adapter не получает настройки PostgreSQL. Dispatcher и reconciler не вызывают `api.invoke` и не делают table DML.
+Adapter не получает настройки PostgreSQL. Dispatcher и reconciler не вызывают `api.invoke` и не делают table DML. Python не выбирает flow, limit и финальный status: это карты и actions в PostgreSQL.
+
+Перезапуск трёх Python-сервисов (`docker compose up -d --no-build --force-recreate outbox-dispatcher receipt-adapter inbox-reconciler`) продолжает работу из PostgreSQL. Образы `api` и worker при этом не пересобираются.
+
+Периметр не пишет в журнал секреты, полный callback, текст `message` провайдера и reason ручного решения. HTTP `workflow.manual` сохраняет `reason_hash` и principal из trusted context.
 
 ### Provider
 
@@ -422,7 +427,7 @@ curl -sS http://127.0.0.1:8080/swagger
 Смотреть журналы:
 
 ```
-docker compose logs -f gateway api cli worker-a worker-b
+docker compose logs -f gateway api cli worker-a worker-b outbox-dispatcher receipt-adapter inbox-reconciler
 ```
 
 Каждый не-health HTTP-запрос пишет пару строк без JWT и тела:
@@ -446,6 +451,10 @@ HTTP POST /api/payment/request -> 200 correlationId=...
 | 404 `action.not_found` | `action list`; не забыт ли `action activate` |
 | 409 `idempotency.conflict` | тот же `Idempotency-Key` с другим JSON |
 | 503 на action | PostgreSQL недоступен; после `start postgres` ready должен вернуться без recreate api |
+| 401 `signature.invalid` | заголовок `X-Provider-Signature` или HMAC над исходными bytes |
+| 403 `receipt.signature_required` | `receipt.accept` без verified transport; Inbox не меняется |
+| adapter 404 пустое тело | capability в пути не совпал с `PROVIDER_CALLBACK_CAPABILITY` |
+| Python после recreate «забыл» Inbox | состояние в PostgreSQL; смотреть `autocheck.inbox`, не логи процесса |
 
 Health не пишется в application-лог трассировки, чтобы пробы Compose не забивали журнал.
 
@@ -455,8 +464,8 @@ Health не пишется в application-лог трассировки, что�
 
 Не входит в текущий этап контура:
 
-- HTTP `workflow.manual` (карта `payment-review` публикуется, ручное решение — следующий этап);
 - миграция версии уже запущенного process;
+- failpoints Outbox/Inbox/`workflow.manual` (следующая неделя курса);
 - Consul, CORS-трансформации, rate limit, кэш gateway;
 - отдельные C# handlers на предметные actions;
 - публикация портов api/cli/worker/python/provider/postgres на хост.
@@ -465,7 +474,7 @@ Health не пишется в application-лог трассировки, что�
 
 Секреты (`COURSE_JWT_SIGNING_KEY`, пароли ролей) в Git не хранятся.
 
-Gateway не является «умным шлюзом»: авторизация, schema и catalog живут во внутреннем api и в PostgreSQL. См. [ADR-0001](docs/adr/0001-trust-boundary.md).
+Gateway не является «умным шлюзом»: авторизация, schema и catalog живут во внутреннем api и в PostgreSQL. См. [ADR-0001](docs/adr/0001-trust-boundary.md). Антикоррупционный слой callback и ACL ролей доставки — [ADR-0004](docs/adr/0004-python-anti-corruption.md).
 
 ## Эндпойнты
 

@@ -29,7 +29,7 @@ Health шлюза:
 | `Authorization: Bearer <jwt>` | клиент | HS256, claims `sub`, `consumer`, `scope`, `iat`, `exp` |
 | `Idempotency-Key` | клиент | обязателен, если в манифесте `idempotency_mode=required`; в context это `requestId` |
 | `X-Action-Version` | клиент, опционально | точная версия; иначе default |
-| `X-Provider-Signature` | adapter | `v1=<lowercase hex HMAC-SHA256>` над исходными body bytes; gateway только форвардит |
+| `X-Provider-Signature` | adapter | `v1=<lowercase hex HMAC-SHA256>` над исходными body bytes; gateway передаёт заголовок и тело без изменения |
 | `Content-Type: application/json` | клиент | тело — JSON-объект |
 | `X-Correlation-Id` | сервер | UUID, который mintит gateway; клиентский одноимённый заголовок отбрасывается |
 
@@ -65,11 +65,17 @@ Health шлюза:
   "scopes": ["payment:write", "payment:read", "workflow:read"],
   "correlationId": "00000000-0000-0000-0000-000000000001",
   "requestId": "idempotency-key-or-null",
-  "deadline": "2026-08-25T12:00:00+00:00"
+  "deadline": "2026-08-25T12:00:00+00:00",
+  "transport": {
+    "signatureVerified": true,
+    "signatureVersion": 1
+  }
 }
 ```
 
 `requestId` равен заголовку `Idempotency-Key`, если он передан, иначе `null`. `deadline` считается из `timeout_ms` манифеста. `timeout_ms` — целое от 1 до 30000. Шлюз ждёт ответ api 35 секунд, чтобы успеть отдать `action.timeout`, а не `dependency.unavailable`.
+
+Поле `transport` появляется только после успешной проверки HMAC над исходными body bytes. В context нет секрета и полной подписи. Без `transport` остальные actions работают как раньше; `receipt.accept` без `signatureVerified=true` даёт `403 receipt.signature_required` и не меняет Inbox.
 
 ## HTTP-конверты
 
@@ -110,13 +116,17 @@ Health шлюза:
 | Код | HTTP | retryable | Когда |
 | --- | --- | --- | --- |
 | `auth.invalid` | 401 | нет | нет/битый JWT, неверный тип claim |
+| `signature.invalid` | 401 | нет | формат, версия или HMAC `X-Provider-Signature`; target не вызывается |
 | `request.invalid` | 400 | нет | не JSON, неизвестный маршрут, неверная версия |
 | `idempotency.required` | 400 | нет | нет `Idempotency-Key` при `required` |
 | `access.denied` | 403 | нет | не хватает scope из `required_policy` |
+| `receipt.signature_required` | 403 | нет | `receipt.accept` без verified transport; Inbox не меняется |
 | `action.not_found` | 404 | нет | неизвестный, выключенный или нерезолвящийся action |
 | `operation.not_found` | 404 | нет | `operation.get` не нашёл операцию |
 | `idempotency.conflict` | 409 | нет | тот же ключ, другой payload |
+| `workflow.decision_conflict` | 409 | нет | `workflow.manual`, шаг уже решён |
 | `payload.invalid` | 422 | нет | тело не проходит `request_schema` |
+| `receipt.external_request_not_found` | 422 | нет | неизвестный `externalRequestId` у receipt |
 | `dependency.unavailable` | 503 | да | PostgreSQL недоступен |
 | `action.timeout` | 504 | да | истёк `timeout_ms` |
 | `action.contract_violation` | 500 | нет | outcome/result вне манифеста |
@@ -156,6 +166,31 @@ Runtime коммитит транзакцию только на `ok` с допу
 - outcome: `FOUND`;
 - payload: `{ "operationId": "<uuid>" }`.
 
+## Обязательные actions недели 3
+
+### `payment.submit` v1
+
+- policy: `payment:write`;
+- payload: `{ "operationId": "<uuid>" }` — без flow, kind, amount, limit, status;
+- binding на сервере: `PAYMENT_EXECUTION` → `payment-processing`, `PAYMENT_APPROVAL` → `payment-review`;
+- повтор того же ключа и тела возвращает исходный result со `status=PROCESSING` и тем же `processId`.
+
+### `receipt.accept` v1
+
+- policy: `receipt:write`;
+- HMAC над исходными bytes; outcomes `RECEIVED` / `DUPLICATE`;
+- `messageId` равен `providerPaymentId`;
+- неизвестный `externalRequestId` — `422 receipt.external_request_not_found`.
+
+### `workflow.manual` v1
+
+- policy: `workflow:manual`;
+- payload: `processId`, `stepInstanceId`, `decision` `APPROVED`|`REJECTED`, `reason` 1–500;
+- в audit пишутся principal из context и `reason_hash`, не сырой reason;
+- уже решённый шаг — `409 workflow.decision_conflict`.
+
+Схемы: `receipt-v1.schema.json`, `provider-v02-callback.schema.json`, `payment-submit.payload.schema.json`, `workflow-manual.payload.schema.json`.
+
 ## Манифест action
 
 Схема: `action-manifest.schema.json`. Обязательные поля опубликованного course-1: `contract_version`, `module`, `action`, `version`, `http_method=POST`, `target_schema`, `target_function`, `request_schema`, `response_schema`, `outcomes`, `required_policy`, `idempotency_mode`, `idempotency_scope`, `timeout_ms`, `enabled`, `is_default`. Неизвестные свойства файла не делают манифест невалидным. `request_schema` / `response_schema` — JSON Schema Draft 2020-12 (объект или boolean). Publish записывает `enabled=false` и `is_default=false` независимо от файла.
@@ -192,6 +227,8 @@ flow signal <processId> --type <type> --message-id <id> --payload <file>
 Read-only views недели 1: `contract_info`, `action_definitions`, `action_dispatches`, `operations`, `operation_events`.
 
 Неделя 2 добавляет: `flow_versions`, `processes`, `steps`, `jobs`, `attempts`, `signals`, `workflow_events`.
+
+Неделя 3 добавляет: `external_requests`, `receipts`, `outbox`, `inbox`, `decisions`. Views не публикуют capability, JWT, HMAC, полный callback и сырой reason.
 
 `autocheck.contract_info.contract_version` = `course-1`.  
 `action_dispatches.status` ∈ `OK`, `ERROR`.  
