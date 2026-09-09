@@ -31,6 +31,8 @@ public sealed class LogRedactionTests
     {
         LogRedaction.IsSensitiveHeader("Idempotency-Key").Should().BeTrue();
         LogRedaction.RedactHeader("Idempotency-Key", "key-1").Should().Be("[redacted]");
+        LogRedaction.IsSensitiveHeader("X-Provider-Signature").Should().BeTrue();
+        LogRedaction.RedactHeader("X-Provider-Signature", "v1=" + new string('a', 64)).Should().Be("[redacted]");
     }
 
     [Fact]

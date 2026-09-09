@@ -18,6 +18,9 @@ public sealed class CourseContractTests
     public void Error_codes_match_the_course_matrix()
     {
         ErrorCodes.AuthInvalid.Should().Be("auth.invalid");
+        ErrorCodes.SignatureInvalid.Should().Be("signature.invalid");
+        ErrorCodes.ReceiptSignatureRequired.Should().Be("receipt.signature_required");
+        ErrorCodes.ReceiptExternalRequestNotFound.Should().Be("receipt.external_request_not_found");
         ErrorCodes.RequestInvalid.Should().Be("request.invalid");
         ErrorCodes.IdempotencyRequired.Should().Be("idempotency.required");
         ErrorCodes.AccessDenied.Should().Be("access.denied");
@@ -64,6 +67,25 @@ public sealed class CourseContractTests
         context.ProcessId.Should().BeNull();
         context.JobId.Should().BeNull();
         context.AttemptId.Should().BeNull();
+        context.Transport.Should().BeNull();
+    }
+
+    [Fact]
+    public void Trusted_context_transport_keeps_only_verified_markers()
+    {
+        TransportMarkers transport = new(SignatureVerified: true, SignatureVersion: 1);
+        TrustedContext context = new(
+            Principal: "receipt-provider",
+            Consumer: "provider",
+            Scopes: ["receipt:write"],
+            CorrelationId: Guid.Parse("1e534bdb-73a8-446a-a8f5-49c4959786c2"),
+            RequestId: "provider-123",
+            Deadline: DateTimeOffset.Parse("2026-09-09T12:00:02Z", CultureInfo.InvariantCulture),
+            Transport: transport);
+
+        context.Transport.Should().NotBeNull();
+        context.Transport!.SignatureVerified.Should().BeTrue();
+        context.Transport.SignatureVersion.Should().Be(1);
     }
 
     [Fact]

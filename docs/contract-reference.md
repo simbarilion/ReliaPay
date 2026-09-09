@@ -29,6 +29,7 @@ Health шлюза:
 | `Authorization: Bearer <jwt>` | клиент | HS256, claims `sub`, `consumer`, `scope`, `iat`, `exp` |
 | `Idempotency-Key` | клиент | обязателен, если в манифесте `idempotency_mode=required`; в context это `requestId` |
 | `X-Action-Version` | клиент, опционально | точная версия; иначе default |
+| `X-Provider-Signature` | adapter | `v1=<lowercase hex HMAC-SHA256>` над исходными body bytes; gateway только форвардит |
 | `Content-Type: application/json` | клиент | тело — JSON-объект |
 | `X-Correlation-Id` | сервер | UUID, который mintит gateway; клиентский одноимённый заголовок отбрасывается |
 

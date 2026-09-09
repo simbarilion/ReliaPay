@@ -14,6 +14,7 @@ namespace ReliaPay.Security;
 /// <param name="ProcessId">Идентификатор process; для HTTP равен null.</param>
 /// <param name="JobId">Идентификатор job; для HTTP равен null.</param>
 /// <param name="AttemptId">Идентификатор попытки; для HTTP равен null.</param>
+/// <param name="Transport">Маркеры HMAC; null, если заголовка подписи не было.</param>
 public sealed record TrustedContext(
     string Principal,
     string Consumer,
@@ -24,4 +25,5 @@ public sealed record TrustedContext(
     string? ExecutionId = null,
     string? ProcessId = null,
     string? JobId = null,
-    string? AttemptId = null);
+    string? AttemptId = null,
+    TransportMarkers? Transport = null);

@@ -29,6 +29,7 @@ public sealed class GatewayProxyTests
         context.Request.Headers.Authorization = "Bearer test-token";
         context.Request.Headers["Idempotency-Key"] = "key-1";
         context.Request.Headers["X-Action-Version"] = "1";
+        context.Request.Headers["X-Provider-Signature"] = "v1=" + new string('a', 64);
         context.Request.Headers.Cookie = "session=secret";
         context.Request.Headers[RequestTraceFactory.CorrelationHeaderName] = "11111111-1111-1111-1111-111111111111";
         context.Request.ContentType = "application/json";
@@ -45,6 +46,8 @@ public sealed class GatewayProxyTests
         handler.Headers.Should().ContainKey("Authorization").WhoseValue.Should().Equal("Bearer test-token");
         handler.Headers.Should().ContainKey("Idempotency-Key").WhoseValue.Should().Equal("key-1");
         handler.Headers.Should().ContainKey("X-Action-Version").WhoseValue.Should().Equal("1");
+        handler.Headers.Should().ContainKey("X-Provider-Signature")
+            .WhoseValue.Should().Equal("v1=" + new string('a', 64));
         handler.Headers.Should().ContainKey(RequestTraceFactory.CorrelationHeaderName)
             .WhoseValue.Should().Equal(correlationId.ToString());
         handler.Headers.Should().ContainKey("Content-Type").WhoseValue.Should().Contain(value => value.Contains("application/json", StringComparison.Ordinal));

@@ -15,13 +15,16 @@ public static class HttpErrorMatrix
         return code switch
         {
             ErrorCodes.AuthInvalid => 401,
+            ErrorCodes.SignatureInvalid => 401,
             ErrorCodes.RequestInvalid => 400,
             ErrorCodes.IdempotencyRequired => 400,
             ErrorCodes.AccessDenied => 403,
+            ErrorCodes.ReceiptSignatureRequired => 403,
             ErrorCodes.ActionNotFound => 404,
             ErrorCodes.OperationNotFound => 404,
             ErrorCodes.IdempotencyConflict => 409,
             ErrorCodes.PayloadInvalid => 422,
+            ErrorCodes.ReceiptExternalRequestNotFound => 422,
             ErrorCodes.DependencyUnavailable => 503,
             ErrorCodes.ActionContractViolation => 500,
             ErrorCodes.ActionTimeout => 504,

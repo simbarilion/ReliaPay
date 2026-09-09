@@ -12,6 +12,21 @@ public static class ErrorCodes
     public const string AuthInvalid = "auth.invalid";
 
     /// <summary>
+    /// Формат, версия или HMAC <c>X-Provider-Signature</c> неверны. Target не вызывается.
+    /// </summary>
+    public const string SignatureInvalid = "signature.invalid";
+
+    /// <summary>
+    /// <c>receipt.accept</c> вызван без проверенной transport-подписи.
+    /// </summary>
+    public const string ReceiptSignatureRequired = "receipt.signature_required";
+
+    /// <summary>
+    /// В payload receipt нет известного <c>externalRequestId</c>.
+    /// </summary>
+    public const string ReceiptExternalRequestNotFound = "receipt.external_request_not_found";
+
+    /// <summary>
     /// Невалидный JSON тела, маршрут или заголовок версии.
     /// </summary>
     public const string RequestInvalid = "request.invalid";

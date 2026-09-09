@@ -21,12 +21,12 @@
    Принимает только whitelist: `POST /api/{module}/{action}`, OpenAPI и health.  
    Не читает JWT, catalog и PostgreSQL.  
    Формирует серверный `correlationId` и подменяет клиентский `X-Correlation-Id`.  
-   Проксирует `Authorization`, `X-Action-Version`, `Idempotency-Key` и `Content-Type` без изменения смысла.  
+   Проксирует `Authorization`, `X-Action-Version`, `Idempotency-Key`, `X-Provider-Signature` и `Content-Type` без изменения смысла.  
    Liveness — сам процесс. Readiness — готовность внутреннего api.
 
 2. **Доверенный runtime — `api`.**  
    Проверяет JWT и JSON-типы claims.  
-   Собирает `TrustedContext` только из проверенного токена.  
+   Собирает `TrustedContext` только из проверенного токена. При валидном `X-Provider-Signature` добавляет только `transport.signatureVerified` и `transport.signatureVersion`; HMAC считается над исходными body bytes.  
    Читает catalog ролью `course_runtime`, валидирует payload по манифесту, открывает одну транзакцию и вызывает `api.invoke`.  
    Не использует учётные данные publication.
 

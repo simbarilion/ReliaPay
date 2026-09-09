@@ -49,6 +49,7 @@ public sealed class Program
             options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         });
         builder.Services.AddSingleton(JwtOptions.FromEnvironment());
+        builder.Services.AddSingleton(ProviderHmacOptions.FromEnvironment());
         builder.Services.AddSingleton<JwtAuthenticator>();
         builder.Services.AddSingleton(_ => new PostgresConnectionFactory(PostgresEndpoints.FromRuntimeEnvironment()));
         builder.Services.AddSingleton<ActionCatalogReader>();
@@ -211,10 +212,16 @@ public sealed class Program
             idempotencyKey = null;
         }
 
-        string? payloadJson = await BoundedJsonBody
-            .ReadAsync(httpContext.Request.Body, httpContext.Request.ContentLength, cancellationToken)
+        string? providerSignature = httpContext.Request.Headers[ProviderHmac.HeaderName].ToString();
+        if (string.IsNullOrEmpty(providerSignature))
+        {
+            providerSignature = null;
+        }
+
+        byte[]? payloadBytes = await BoundedJsonBody
+            .ReadBytesAsync(httpContext.Request.Body, httpContext.Request.ContentLength, cancellationToken)
             .ConfigureAwait(false);
-        if (payloadJson is null)
+        if (payloadBytes is null)
         {
             return ApiJson.Error(
                 StatusCodes.Status400BadRequest,
@@ -227,7 +234,14 @@ public sealed class Program
         }
 
         ActionHttpResult result = await executor
-            .ExecuteAsync(route, principal, idempotencyKey, payloadJson, correlationId, cancellationToken)
+            .ExecuteAsync(
+                route,
+                principal,
+                idempotencyKey,
+                payloadBytes,
+                providerSignature,
+                correlationId,
+                cancellationToken)
             .ConfigureAwait(false);
         return result switch
         {

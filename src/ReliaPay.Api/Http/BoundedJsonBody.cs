@@ -3,18 +3,18 @@ using ReliaPay.Contracts;
 namespace ReliaPay.Api.Http;
 
 /// <summary>
-/// Читает JSON-тело action с явным верхним пределом, без полной буферизации сверх лимита.
+/// Читает тело action с явным верхним пределом, без полной буферизации сверх лимита.
+/// HMAC считается над этими же байтами, поэтому текст не пересобирается до проверки подписи.
 /// </summary>
 internal static class BoundedJsonBody
 {
     /// <summary>
-    /// Читает тело до <see cref="CourseHttpLimits.MaxRequestBodyBytes"/>. Null означает, что лимит превышен.
+    /// Читает исходные байты до <see cref="CourseHttpLimits.MaxRequestBodyBytes"/>. Null — лимит превышен.
     /// </summary>
     /// <param name="body">Входящий поток запроса.</param>
     /// <param name="contentLength">Заголовок Content-Length, если есть.</param>
     /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns>Текст тела либо null при превышении лимита.</returns>
-    public static async Task<string?> ReadAsync(
+    public static async Task<byte[]?> ReadBytesAsync(
         Stream body,
         long? contentLength,
         CancellationToken cancellationToken)
@@ -44,6 +44,6 @@ internal static class BoundedJsonBody
             buffer.Write(chunk, 0, read);
         }
 
-        return System.Text.Encoding.UTF8.GetString(buffer.ToArray());
+        return buffer.ToArray();
     }
 }

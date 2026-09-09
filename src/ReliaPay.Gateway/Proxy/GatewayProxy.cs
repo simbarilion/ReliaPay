@@ -19,6 +19,7 @@ public sealed class GatewayProxy
         "Authorization",
         "X-Action-Version",
         "Idempotency-Key",
+        "X-Provider-Signature",
     ];
 
     private static readonly JsonSerializerOptions ResponseJsonOptions = new()

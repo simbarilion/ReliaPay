@@ -22,9 +22,11 @@ public static class LogRedaction
             || name.Equals("Set-Cookie", StringComparison.OrdinalIgnoreCase)
             || name.Equals("X-Api-Key", StringComparison.OrdinalIgnoreCase)
             || name.Equals("Idempotency-Key", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("X-Provider-Signature", StringComparison.OrdinalIgnoreCase)
             || name.Contains("password", StringComparison.OrdinalIgnoreCase)
             || name.Contains("secret", StringComparison.OrdinalIgnoreCase)
-            || name.Contains("signing", StringComparison.OrdinalIgnoreCase);
+            || name.Contains("signing", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("signature", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

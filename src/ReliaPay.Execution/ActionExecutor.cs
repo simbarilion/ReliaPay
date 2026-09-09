@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Npgsql;
 using ReliaPay.Catalog;
 using ReliaPay.Contracts;
@@ -25,20 +27,24 @@ public sealed class ActionExecutor
     private readonly ActionCatalogReader? _catalog;
     private readonly PostgresConnectionFactory _connections;
     private readonly JsonDocumentValidator _validator;
+    private readonly ProviderHmacOptions _hmac;
 
     /// <summary>
-    /// Создаёт исполнитель поверх catalog, runtime-соединений и JSON Schema.
+    /// Создаёт исполнитель поверх catalog, runtime-соединений, JSON Schema и HMAC-ключа.
     /// </summary>
     /// <param name="catalog">Чтение манифестов ролью runtime.</param>
     /// <param name="connections">Фабрика runtime-соединений.</param>
     /// <param name="validator">Проверка request/response schema.</param>
+    /// <param name="hmac">Raw UTF-8 ключ <c>PROVIDER_HMAC_SECRET</c>.</param>
     public ActionExecutor(
         ActionCatalogReader catalog,
         PostgresConnectionFactory connections,
-        JsonDocumentValidator validator)
-        : this(connections, validator, catalog)
+        JsonDocumentValidator validator,
+        ProviderHmacOptions hmac)
+        : this(connections, validator, catalog, hmac)
     {
         ArgumentNullException.ThrowIfNull(catalog);
+        ArgumentNullException.ThrowIfNull(hmac);
     }
 
     /// <summary>
@@ -49,20 +55,23 @@ public sealed class ActionExecutor
     public ActionExecutor(
         PostgresConnectionFactory connections,
         JsonDocumentValidator validator)
-        : this(connections, validator, catalog: null)
+        : this(connections, validator, catalog: null, hmac: new ProviderHmacOptions([]))
     {
     }
 
     private ActionExecutor(
         PostgresConnectionFactory connections,
         JsonDocumentValidator validator,
-        ActionCatalogReader? catalog)
+        ActionCatalogReader? catalog,
+        ProviderHmacOptions hmac)
     {
         ArgumentNullException.ThrowIfNull(connections);
         ArgumentNullException.ThrowIfNull(validator);
+        ArgumentNullException.ThrowIfNull(hmac);
         _catalog = catalog;
         _connections = connections;
         _validator = validator;
+        _hmac = hmac;
     }
 
     /// <summary>
@@ -71,7 +80,8 @@ public sealed class ActionExecutor
     /// <param name="route">Разобранный маршрут.</param>
     /// <param name="principal">Проверенный JWT.</param>
     /// <param name="idempotencyKey">Заголовок Idempotency-Key.</param>
-    /// <param name="payloadJson">Сырое JSON-тело.</param>
+    /// <param name="payloadBytes">Исходные байты HTTP-тела; HMAC считается до JSON-parse.</param>
+    /// <param name="providerSignature">Заголовок <c>X-Provider-Signature</c>, если передан.</param>
     /// <param name="correlationId">Серверный UUID следа, общий с gateway.</param>
     /// <param name="cancellationToken">Токен HTTP-запроса.</param>
     /// <returns>Контрактный HTTP-результат.</returns>
@@ -79,10 +89,12 @@ public sealed class ActionExecutor
         ActionRoute route,
         JwtPrincipal principal,
         string? idempotencyKey,
-        string payloadJson,
+        byte[] payloadBytes,
+        string? providerSignature,
         Guid correlationId,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(payloadBytes);
         using Activity? activity = ReliaPayInstrumentation.ActivitySource.StartActivity("api.action.execute");
         ReliaPayActivity.ApplyTags(
             activity,
@@ -132,11 +144,18 @@ public sealed class ActionExecutor
             return Fail(ErrorCodes.IdempotencyRequired, "Idempotency-Key is required", correlationId, manifest.Version);
         }
 
-        if (string.IsNullOrWhiteSpace(payloadJson))
+        ProviderHmacResult hmacResult = ProviderHmac.Verify(_hmac.Key, payloadBytes, providerSignature);
+        if (hmacResult == ProviderHmacResult.Invalid)
+        {
+            return Fail(ErrorCodes.SignatureInvalid, "provider signature is invalid", correlationId, manifest.Version);
+        }
+
+        if (payloadBytes.Length == 0)
         {
             return Fail(ErrorCodes.RequestInvalid, "request body must be JSON", correlationId, manifest.Version);
         }
 
+        string payloadJson = Encoding.UTF8.GetString(payloadBytes);
         try
         {
             using JsonDocument parsed = JsonDocument.Parse(payloadJson);
@@ -156,13 +175,18 @@ public sealed class ActionExecutor
             return Fail(ErrorCodes.PayloadInvalid, "payload does not match schema", correlationId, manifest.Version);
         }
 
+        TransportMarkers? transport = hmacResult == ProviderHmacResult.Verified
+            ? new TransportMarkers(SignatureVerified: true, SignatureVersion: 1)
+            : null;
+
         TrustedContext context = new(
             Principal: principal.Principal ?? string.Empty,
             Consumer: principal.Consumer ?? string.Empty,
             Scopes: principal.Scopes,
             CorrelationId: correlationId,
             RequestId: string.IsNullOrWhiteSpace(idempotencyKey) ? null : idempotencyKey.Trim(),
-            Deadline: DateTimeOffset.UtcNow.AddMilliseconds(manifest.TimeoutMs));
+            Deadline: DateTimeOffset.UtcNow.AddMilliseconds(manifest.TimeoutMs),
+            Transport: transport);
 
         using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(manifest.TimeoutMs);
@@ -344,6 +368,9 @@ public sealed class ActionExecutor
 
     private static InvokeContextDto ToInvokeContext(TrustedContext context)
     {
+        InvokeTransportDto? transport = context.Transport is null
+            ? null
+            : new InvokeTransportDto(context.Transport.SignatureVerified, context.Transport.SignatureVersion);
         return new InvokeContextDto(
             context.Principal,
             context.Consumer,
@@ -354,7 +381,8 @@ public sealed class ActionExecutor
             context.ExecutionId,
             context.ProcessId,
             context.JobId,
-            context.AttemptId);
+            context.AttemptId,
+            transport);
     }
 
     private static string SanitizeMessage(string code, string message)
@@ -392,6 +420,8 @@ public sealed class ActionExecutor
         }
     }
 
+    private sealed record InvokeTransportDto(bool SignatureVerified, int SignatureVersion);
+
     private sealed record InvokeContextDto(
         string Principal,
         string Consumer,
@@ -402,5 +432,7 @@ public sealed class ActionExecutor
         string? ExecutionId,
         string? ProcessId,
         string? JobId,
-        string? AttemptId);
+        string? AttemptId,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        InvokeTransportDto? Transport);
 }

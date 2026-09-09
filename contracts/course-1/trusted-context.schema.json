@@ -25,6 +25,15 @@
     "executionId": { "type": ["string", "null"] },
     "processId": { "type": ["string", "null"] },
     "jobId": { "type": ["string", "null"] },
-    "attemptId": { "type": ["string", "null"] }
+    "attemptId": { "type": ["string", "null"] },
+    "transport": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["signatureVerified", "signatureVersion"],
+      "properties": {
+        "signatureVerified": { "type": "boolean" },
+        "signatureVersion": { "const": 1 }
+      }
+    }
   }
 }
