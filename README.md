@@ -331,7 +331,7 @@ docker compose run --rm --no-deps -T \
   cli flow signal <processId> --type training.completed --message-id msg-1 --payload /data/signal.json
 ```
 
-Встроенные миграции уже публикуют `training.canary`, `workflow-smoke` v1 (активна) / v2 и `workflow-manual` v1 (старт сразу в `WAITING_MANUAL`). Файлы: `db/manifests/training.canary.v1.json`, `db/maps/workflow-smoke.v1.json`, `db/maps/workflow-smoke.v2.json`, `db/maps/workflow-manual.v1.json`.
+Встроенные миграции уже публикуют `training.canary`, `workflow-smoke` v1 (активна) / v2, `workflow-manual` v1 (старт сразу в `WAITING_MANUAL`) и обе платёжные карты v1: `payment-processing` и `payment-review` (обе active). Binding `payment.submit` выбирает карту по `operationKind` на сервере: `PAYMENT_EXECUTION` → `payment-processing`, `PAYMENT_APPROVAL` → `payment-review`. Файлы: `db/manifests/training.canary.v1.json`, `db/maps/workflow-smoke.v1.json`, `db/maps/workflow-smoke.v2.json`, `db/maps/workflow-manual.v1.json`, `db/maps/payment-processing.v1.json`, `db/maps/payment-review.v1.json`.
 
 Состояние process читается и по HTTP: `POST /api/workflow/get` с правом `workflow:read`.
 
@@ -455,7 +455,7 @@ Health не пишется в application-лог трассировки, что�
 
 Не входит в текущий этап контура:
 
-- карты `payment-processing` / `payment-review` и HTTP `workflow.manual` (будут следующими этапами);
+- HTTP `workflow.manual` (карта `payment-review` публикуется, ручное решение — следующий этап);
 - миграция версии уже запущенного process;
 - Consul, CORS-трансформации, rate limit, кэш gateway;
 - отдельные C# handlers на предметные actions;

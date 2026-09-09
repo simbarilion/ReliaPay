@@ -1,0 +1,35 @@
+{
+  "contract_version": "course-1",
+  "module": "payment",
+  "action": "complete",
+  "version": 1,
+  "http_method": "POST",
+  "target_schema": "app",
+  "target_function": "payment_complete",
+  "request_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["operationId"],
+    "properties": {
+      "operationId": { "type": "string", "format": "uuid" }
+    }
+  },
+  "response_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["operationId", "status"],
+    "properties": {
+      "operationId": { "type": "string", "format": "uuid" },
+      "status": { "const": "COMPLETED" }
+    }
+  },
+  "outcomes": ["COMPLETED"],
+  "required_policy": ["payment:internal"],
+  "idempotency_mode": "none",
+  "idempotency_scope": "none",
+  "timeout_ms": 2000,
+  "enabled": false,
+  "is_default": false
+}
