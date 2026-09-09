@@ -115,4 +115,9 @@ public static class ErrorCodes
     /// Конфликт идемпотентности процесса, сигнала или неизменяемой версии карты.
     /// </summary>
     public const string WorkflowConflict = "workflow.conflict";
+
+    /// <summary>
+    /// Manual-шаг уже решён или решение не совпадает с текущим ожиданием.
+    /// </summary>
+    public const string WorkflowDecisionConflict = "workflow.decision_conflict";
 }

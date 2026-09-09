@@ -23,6 +23,7 @@ public static class HttpErrorMatrix
             ErrorCodes.ActionNotFound => 404,
             ErrorCodes.OperationNotFound => 404,
             ErrorCodes.IdempotencyConflict => 409,
+            ErrorCodes.WorkflowDecisionConflict => 409,
             ErrorCodes.PayloadInvalid => 422,
             ErrorCodes.ReceiptExternalRequestNotFound => 422,
             ErrorCodes.DependencyUnavailable => 503,

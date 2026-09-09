@@ -15,6 +15,7 @@ public sealed class HttpErrorMatrixTests
     [InlineData(ErrorCodes.ActionNotFound, 404, false)]
     [InlineData(ErrorCodes.OperationNotFound, 404, false)]
     [InlineData(ErrorCodes.IdempotencyConflict, 409, false)]
+    [InlineData(ErrorCodes.WorkflowDecisionConflict, 409, false)]
     [InlineData(ErrorCodes.PayloadInvalid, 422, false)]
     [InlineData(ErrorCodes.ReceiptExternalRequestNotFound, 422, false)]
     [InlineData(ErrorCodes.DependencyUnavailable, 503, true)]

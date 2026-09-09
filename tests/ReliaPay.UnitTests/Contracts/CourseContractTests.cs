@@ -38,6 +38,7 @@ public sealed class CourseContractTests
         ErrorCodes.WorkflowMappingMissing.Should().Be("workflow.mapping_missing");
         ErrorCodes.WorkflowLeaseStale.Should().Be("workflow.lease_stale");
         ErrorCodes.WorkflowConflict.Should().Be("workflow.conflict");
+        ErrorCodes.WorkflowDecisionConflict.Should().Be("workflow.decision_conflict");
     }
 
     [Fact]
