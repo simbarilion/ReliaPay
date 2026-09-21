@@ -1,5 +1,6 @@
 using System.Text.Json;
 using ReliaPay.Contracts;
+using ReliaPay.Json;
 
 namespace ReliaPay.Catalog;
 
@@ -182,9 +183,7 @@ public sealed class WorkflowMapSemanticValidator
         {
             foreach (JsonProperty property in task.InputConstants.EnumerateObject())
             {
-                destinations.Add(property.Name.StartsWith("/", StringComparison.Ordinal)
-                    ? property.Name
-                    : "/" + property.Name);
+                destinations.Add(JsonPointer.FromPropertyName(property.Name));
             }
         }
 
@@ -192,7 +191,7 @@ public sealed class WorkflowMapSemanticValidator
         {
             for (int right = left + 1; right < destinations.Count; right++)
             {
-                if (PointersOverlap(destinations[left], destinations[right]))
+                if (JsonPointer.DestinationsOverlap(destinations[left], destinations[right]))
                 {
                     return true;
                 }
@@ -200,13 +199,6 @@ public sealed class WorkflowMapSemanticValidator
         }
 
         return false;
-    }
-
-    private static bool PointersOverlap(string left, string right)
-    {
-        return left == right
-            || left.StartsWith(right + "/", StringComparison.Ordinal)
-            || right.StartsWith(left + "/", StringComparison.Ordinal);
     }
 
     private static void Add(Dictionary<string, List<string>> map, string key, string value)

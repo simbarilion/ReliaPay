@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using ReliaPay.Contracts;
+using ReliaPay.Json;
 
 namespace ReliaPay.Execution;
 
@@ -15,7 +16,7 @@ public static class WorkflowInputMapper
     /// </summary>
     /// <param name="processData">Текущие process data.</param>
     /// <param name="mapping">Назначение JSON Pointer → источник JSON Pointer.</param>
-    /// <param name="constants">Константы шага; ключ без <c>/</c> считается корневым полем.</param>
+    /// <param name="constants">Константы шага; ключ без <c>/</c> — имя корневого поля (RFC 6901 escape).</param>
     /// <param name="payloadJson">Собранный объект либо пустая строка при ошибке.</param>
     /// <param name="errorCode">Нормативный код или null.</param>
     /// <returns>Истина, если payload собран.</returns>
@@ -43,9 +44,7 @@ public static class WorkflowInputMapper
         {
             foreach (JsonProperty property in constants.EnumerateObject())
             {
-                string destination = property.Name.StartsWith('/')
-                    ? property.Name
-                    : "/" + property.Name;
+                string destination = JsonPointer.FromPropertyName(property.Name);
                 if (!TrySetPointer(payload, destination, CloneNode(property.Value)))
                 {
                     payloadJson = string.Empty;
@@ -87,7 +86,7 @@ public static class WorkflowInputMapper
         JsonElement current = root;
         foreach (string token in pointer.Split('/').Skip(1))
         {
-            string name = Unescape(token);
+            string name = JsonPointer.Unescape(token);
             if (current.ValueKind == JsonValueKind.Object)
             {
                 if (!current.TryGetProperty(name, out current))
@@ -125,7 +124,7 @@ public static class WorkflowInputMapper
             return false;
         }
 
-        string[] tokens = pointer.Split('/').Skip(1).Select(Unescape).ToArray();
+        string[] tokens = pointer.Split('/').Skip(1).Select(JsonPointer.Unescape).ToArray();
         if (tokens.Length == 0 || tokens.Any(string.IsNullOrEmpty))
         {
             return false;
@@ -153,10 +152,5 @@ public static class WorkflowInputMapper
 
         current[tokens[^1]] = value;
         return true;
-    }
-
-    private static string Unescape(string token)
-    {
-        return token.Replace("~1", "/", StringComparison.Ordinal).Replace("~0", "~", StringComparison.Ordinal);
     }
 }

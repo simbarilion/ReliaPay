@@ -72,4 +72,58 @@ public sealed class WorkflowInputMapperTests
         using JsonDocument mapped = JsonDocument.Parse(payload);
         mapped.RootElement.GetProperty("person").GetProperty("name").GetString().Should().Be("ada");
     }
+
+    [Fact]
+    public void Constant_slash_name_is_a_literal_property_not_a_nested_path()
+    {
+        using JsonDocument data = JsonDocument.Parse("{}");
+        using JsonDocument constants = JsonDocument.Parse("""{"a/b":"leaf"}""");
+        WorkflowInputMapper.TryMap(
+                data.RootElement,
+                new Dictionary<string, string>(),
+                constants.RootElement,
+                out string payload,
+                out string? error)
+            .Should()
+            .BeTrue();
+        error.Should().BeNull();
+        using JsonDocument mapped = JsonDocument.Parse(payload);
+        mapped.RootElement.GetProperty("a/b").GetString().Should().Be("leaf");
+        mapped.RootElement.TryGetProperty("a", out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Constant_tilde_name_is_written_without_treating_tilde_as_escape()
+    {
+        using JsonDocument data = JsonDocument.Parse("{}");
+        using JsonDocument constants = JsonDocument.Parse("""{"a~b":"tilde"}""");
+        WorkflowInputMapper.TryMap(
+                data.RootElement,
+                new Dictionary<string, string>(),
+                constants.RootElement,
+                out string payload,
+                out string? error)
+            .Should()
+            .BeTrue();
+        error.Should().BeNull();
+        using JsonDocument mapped = JsonDocument.Parse(payload);
+        mapped.RootElement.GetProperty("a~b").GetString().Should().Be("tilde");
+    }
+
+    [Fact]
+    public void Escaped_mapping_destination_writes_slash_property()
+    {
+        using JsonDocument data = JsonDocument.Parse("""{"value":"hello"}""");
+        WorkflowInputMapper.TryMap(
+                data.RootElement,
+                new Dictionary<string, string> { ["/a~1b"] = "/value" },
+                JsonDocument.Parse("{}").RootElement,
+                out string payload,
+                out string? error)
+            .Should()
+            .BeTrue();
+        error.Should().BeNull();
+        using JsonDocument mapped = JsonDocument.Parse(payload);
+        mapped.RootElement.GetProperty("a/b").GetString().Should().Be("hello");
+    }
 }
