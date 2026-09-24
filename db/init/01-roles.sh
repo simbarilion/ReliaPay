@@ -86,3 +86,8 @@ CREATE TABLE api.schema_migrations (
 ALTER TABLE api.schema_migrations OWNER TO course_owner;
 GRANT SELECT, INSERT ON TABLE api.schema_migrations TO course_publication;
 SQL
+
+# Durable marker: custom entrypoint waits for this before post-init role repair,
+# and Compose healthcheck treats bootstrap as finished only after this file exists.
+PGDATA="${PGDATA:-/var/lib/postgresql/data}"
+touch "${PGDATA}/.reliapay-init-complete"

@@ -1,6 +1,7 @@
 #!/bin/sh
-# Досоздаёт роли worker/dispatcher/reconciler и схемы workflow/delivery на уже существующем томе.
-# На пустом data directory 01-roles.sh уже создал те же объекты; команды идемпотентны.
+# Досоздаёт роли/схемы на уже существующем томе и синхронизирует пароли.
+# На пустом data directory вызывается только после durable marker от 01-roles.sh.
+# Все роли создаются/проверяются до ALTER/GRANT.
 set -e
 
 if [ -z "${COURSE_PUBLISHER_PASSWORD}" ]; then
@@ -38,6 +39,15 @@ psql -v ON_ERROR_STOP=1 \
   --set=inbox_password="$COURSE_INBOX_PASSWORD" <<SQL
 DO \$\$
 BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'course_owner') THEN
+    CREATE ROLE course_owner NOLOGIN NOSUPERUSER INHERIT NOCREATEDB NOCREATEROLE NOREPLICATION;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'course_publication') THEN
+    CREATE ROLE course_publication LOGIN NOSUPERUSER NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'course_runtime') THEN
+    CREATE ROLE course_runtime LOGIN NOSUPERUSER INHERIT NOCREATEDB NOCREATEROLE NOREPLICATION;
+  END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'workflow_worker') THEN
     CREATE ROLE workflow_worker LOGIN NOSUPERUSER NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION;
   END IF;

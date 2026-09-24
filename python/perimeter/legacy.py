@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime
 from typing import Any
 
 _OCCURRED_AT = re.compile(
@@ -30,8 +31,6 @@ def parse_legacy_callback(body: bytes) -> dict[str, str]:
         raise LegacyCallbackError("unexpected fields")
     if any(key not in payload for key in _REQUIRED):
         raise LegacyCallbackError("missing fields")
-    if payload["result"] not in {"COMPLETED", "REJECTED"}:
-        raise LegacyCallbackError("invalid result")
     parsed: dict[str, str] = {}
     for key in _REQUIRED:
         value = payload[key]
@@ -40,6 +39,8 @@ def parse_legacy_callback(body: bytes) -> dict[str, str]:
         if "\r" in value or "\n" in value:
             raise LegacyCallbackError(f"{key} contains crlf")
         parsed[key] = value
+    if parsed["result"] not in {"COMPLETED", "REJECTED"}:
+        raise LegacyCallbackError("invalid result")
     for key in ("providerPaymentId", "operationId"):
         if not 1 <= len(parsed[key]) <= _MAX_ID:
             raise LegacyCallbackError(f"{key} length")
@@ -47,4 +48,24 @@ def parse_legacy_callback(body: bytes) -> dict[str, str]:
         raise LegacyCallbackError("message length")
     if len(parsed["occurredAt"]) > _MAX_OCCURRED or _OCCURRED_AT.fullmatch(parsed["occurredAt"]) is None:
         raise LegacyCallbackError("occurredAt")
+    if not _occurred_at_is_calendar(parsed["occurredAt"]):
+        raise LegacyCallbackError("occurredAt")
     return parsed
+
+
+def _occurred_at_is_calendar(value: str) -> bool:
+    """Strict calendar check for RFC3339 UTC timestamps ending with Z."""
+    if not value.endswith("Z"):
+        return False
+    body = value[:-1]
+    if "." in body:
+        base, frac = body.split(".", 1)
+        if not frac.isdigit() or not 1 <= len(frac) <= 9:
+            return False
+    else:
+        base = body
+    try:
+        datetime.strptime(base + "Z", "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        return False
+    return True

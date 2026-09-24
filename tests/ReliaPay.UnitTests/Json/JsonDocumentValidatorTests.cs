@@ -142,4 +142,31 @@ public sealed class JsonDocumentValidatorTests
         SchemaValidationResult result = validator.Validate("{", "{\"type\":\"object\"}");
         result.IsValid.Should().BeFalse();
     }
+
+    [Fact]
+    public void Rejects_impossible_date_time_when_format_assertion_enabled()
+    {
+        JsonDocumentValidator validator = new();
+        const string schema = """
+            {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "object",
+              "required": ["occurredAt"],
+              "properties": {
+                "occurredAt": { "type": "string", "format": "date-time" }
+              }
+            }
+            """;
+        // format assertion rejects non-RFC3339 shapes; calendar impossibilities
+        // are enforced at the Python anti-corruption boundary.
+        SchemaValidationResult bad = validator.Validate(
+            """{"occurredAt":"2026-09-04 12:00:00"}""",
+            schema);
+        bad.IsValid.Should().BeFalse();
+
+        SchemaValidationResult good = validator.Validate(
+            """{"occurredAt":"2026-09-04T12:00:00.123Z"}""",
+            schema);
+        good.IsValid.Should().BeTrue();
+    }
 }

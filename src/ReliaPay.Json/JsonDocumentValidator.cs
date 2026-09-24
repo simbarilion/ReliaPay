@@ -80,7 +80,11 @@ public sealed class JsonDocumentValidator
         JsonSchema schema = JsonSchema.FromText(schemaJson);
         EvaluationResults results = schema.Evaluate(
             documentNode,
-            new EvaluationOptions { OutputFormat = OutputFormat.Flag });
+            new EvaluationOptions
+            {
+                OutputFormat = OutputFormat.Flag,
+                RequireFormatValidation = true,
+            });
         return results.IsValid
             ? new SchemaValidationResult(true, null)
             : new SchemaValidationResult(false, "document does not match schema");
