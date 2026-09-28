@@ -4,7 +4,7 @@
 
 Сервис принимает клиентский запрос на единственном хост-порту 8080, аутентифицирует вызывающего по JWT HS256, резолвит действие из каталога в PostgreSQL и исполняет зарегистрированную функцию внутри одной транзакции. Клиент выбирает только `module`, `action` и JSON-payload. Имя схемы, имя функции и SQL ему недоступны.
 
-Предметная логика живёт в PostgreSQL: операции недели 1 и персистентное workflow-ядро недели 2. C# не содержит отдельных контроллеров на каждый action. Новый зарегистрированный action и новая карта вызываются без пересборки образов gateway, api и worker.
+Предметная логика живёт в PostgreSQL: платёжные операции и персистентное workflow-ядро. C# не содержит отдельных контроллеров на каждый action. Новый зарегистрированный action и новая карта вызываются без пересборки образов gateway, api и worker.
 
 
 ## Цели надёжности
@@ -61,7 +61,6 @@ http://localhost:8080/openapi/default.json
 - [Справочник контракта course-1](docs/contract-reference.md)
 - [Runbook: diagnostics и failpoint-цикл](docs/runbook.md)
 
-Исходная формулировка недели 1 — в [TASK.md](TASK.md).
 
 ### Архитектура
 
@@ -235,13 +234,13 @@ docker compose up -d --build
 
 Том PostgreSQL — named volume `course_data`. Обычная остановка: `docker compose down` или `docker compose stop` — том **сохраняется**, cold start после этого поднимает прежнее состояние.
 
-**Не** используйте `docker compose down -v` на живом учебном контуре: флаг `-v` удалит data directory и все операции/Outbox. Для «чистого» эксперимента поднимите отдельный Compose project (как делает `./check.sh`), а не сносите volume основного `reliapay`.
+**Не** используйте `docker compose down -v` на живом локальном контуре: флаг `-v` удалит data directory и все операции/Outbox. Для «чистого» эксперимента поднимите отдельный Compose project (как делает `./check.sh`), а не сносите volume основного `reliapay`.
 
 На хост опубликован только порт `8080` на `127.0.0.1`. Порты PostgreSQL, api, cli, worker, Python-периметра и provider наружу не пробрасываются. Внутри сети Compose используются адреса `postgres:5432` и `http://api:8080`.
 
 ### Конфигурация
 
-Шаблон — [`.env.example`](.env.example). Полный configuration seam checker/course — в `moduledev-week-4-reliability-task/docs/configuration.md`. Ниже — существенные переменные локального контура.
+Шаблон — [`.env.example`](.env.example). Ниже — существенные переменные локального контура.
 
 | Переменная | Назначение |
 | --- | --- |
@@ -288,7 +287,7 @@ JWT читает только `api`. Gateway секрета подписи не 
 
 Claims токена: `sub`, `consumer`, `scope`, `iat`, `exp`. `scope` — строка с пробелами или массив строк. Число или объект в `scope` отклоняются как `auth.invalid`.
 
-Учебный клиент для `payment.request` / `operation.get`:
+Демо-клиент для `payment.request` / `operation.get`:
 
 | Claim | Значение |
 | --- | --- |
@@ -380,7 +379,7 @@ Failpoints — только при `COURSE_TEST_PROFILE=1` (иначе `COURSE_F
 
 Шесть имён: `after_job_claim`, `after_action_before_finish` (worker); `after_outbox_claim`, `after_provider_response` (dispatcher); `after_inbox_saved`, `after_manual_decision` (api). Production profile точек не активирует; HTTP-endpoint включения нет.
 
-Цикл «задайте точку → дождитесь ack → stop → снимите failpoint → up → докажите фактами/trace/metrics» и разбор результатов — в [docs/runbook.md](docs/runbook.md). Полная матрица границ — в задании (`07-autocheck-outline.md`).
+Цикл «задайте точку → дождитесь ack → stop → снимите failpoint → up → докажите фактами/trace/metrics» и разбор результатов — в [docs/runbook.md](docs/runbook.md).
 
 `COURSE_TEST_PROFILE=1` задаёт короткие poll/lease (worker/outbox порядка 100 мс / 2000 мс). В tracked Compose default равен `1`.
 
@@ -459,7 +458,7 @@ curl -sS http://127.0.0.1:8080/api/diagnostics/stalled \
 ./check.sh
 ```
 
-Скрипт — public checker курса (отдельный Compose project). Том пользовательского `reliapay` и named volume `course_data` скрипт не сносит. Актуальный пакет недели 4 после подключения пишет `week-4-public-report.json` и гоняет admission → startup → outbox → receipt → review → observability → recovery → security; до swap пакета локально может оставаться отчёт недели 3. Ожидаемый финал зависит от выданного checker.
+Скрипт — public checker надёжности (отдельный Compose project). Том пользовательского `reliapay` и named volume `course_data` скрипт не сносит. Прогон охватывает admission → startup → outbox → receipt → review → observability → recovery → security и пишет локальный отчёт `week-4-public-report.json` (файл в `.gitignore`, на GitHub не попадает). Ожидаемый финал зависит от версии checker.
 
 `--keep-stack` оставляет isolated project после прогона.
 
@@ -545,7 +544,7 @@ Health не пишется в application-лог трассировки, что�
 
 ### Ограничения
 
-Недели 1–4: Database-first runtime, workflow, Python-периметр доставки, dual dispatcher/reconciler, failpoints, health/metrics и diagnostics. Это не полный банковский процессинг и не BPMN.
+В контуре: Database-first runtime, workflow, Python-периметр доставки, dual dispatcher/reconciler, failpoints, health/metrics и diagnostics. Это не полный банковский процессинг и не BPMN.
 
 Не входит в контур:
 
@@ -693,7 +692,7 @@ docker compose run --rm --no-deps -T cli flow list
 
 ## Автор
 
-Выполнено в рамках учебного задания ModuleDev, недели 1 и 2.
+ReliaPay — демонстрационный runtime платёжных операций с упором на надёжность доставки и наблюдаемость.
 
 Надежда Попова
 

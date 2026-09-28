@@ -5,7 +5,7 @@
 
 ## Контекст
 
-Неделя 2 добавляет automatic-шаги workflow. HTTP-путь недели 1 открывает runtime-транзакцию, вызывает `api.invoke` и сам делает COMMIT. Если worker повторит этот путь, сценарий `after_action_before_finish` сломается: к моменту `docker kill` effect и `action_dispatches` уже зафиксированы, а `finish_job` не выполнен.
+Automatic-шаги workflow исполняет worker. HTTP-путь открытия operation открывает runtime-транзакцию, вызывает `api.invoke` и сам делает COMMIT. Если worker повторит этот путь, сценарий `after_action_before_finish` сломается: к моменту `docker kill` effect и `action_dispatches` уже зафиксированы, а `finish_job` не выполнен.
 
 Нужны два экземпляра одного образа (`worker-a`, `worker-b`), видимый lease для reclaim и fencing по `leaseVersion`. Worker не должен читать catalog и писать в таблицы workflow напрямую.
 

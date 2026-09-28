@@ -1,4 +1,4 @@
-# C4: ReliaPay, недели 1–3
+# C4: ReliaPay — контейнеры
 
 Два уровня: контекст системы и контейнеры Compose. Компонентный уровень C# намеренно не рисуется здесь — его роль описана в [ADR-0001](adr/0001-trust-boundary.md), [ADR-0003](adr/0003-worker-lease-transaction.md) и [ADR-0004](adr/0004-python-anti-corruption.md).
 
@@ -8,7 +8,7 @@
 
 ```mermaid
 flowchart LR
-  client["Клиент курса<br/>JWT HS256"]
+  client["Клиент<br/>JWT HS256"]
   operator["Оператор / CI<br/>Course CLI"]
   system["ReliaPay<br/>runtime, workflow, периметр"]
   db[("PostgreSQL<br/>БД course")]
@@ -88,6 +88,6 @@ flowchart TB
 | `receipt-adapter` | Не хранит callback как истину, не получает `PG*` / `DB_*`, не ACK до ответа API |
 | `inbox-reconciler` | Не пишет в таблицы Inbox напрямую, не обгоняет `wait_signal` |
 | `provider-simulator` | Не является отправителем native receipt v1 и не собирается из этого репозитория |
-| `postgres` | Не публикует порт на хост в учебной конфигурации |
+| `postgres` | Не публикует порт на хост в локальной конфигурации |
 
 Подробности границы доверия — [ADR-0001](adr/0001-trust-boundary.md). Различие HTTP-конверта и outcome функции — [ADR-0002](adr/0002-technical-vs-domain-result.md). Lease и транзакция worker — [ADR-0003](adr/0003-worker-lease-transaction.md). Антикоррупционный слой и ACL Python — [ADR-0004](adr/0004-python-anti-corruption.md).

@@ -5,9 +5,9 @@
 
 ## Контекст
 
-Неделя 3 подключает выданный provider-simulator v0.2.0. Он говорит на legacy callback (`providerPaymentId`, `operationId`, `result`, `message`, `occurredAt`) и не подписывает receipt v1. Ядро ReliaPay уже умеет generic HTTP, HMAC над исходными body bytes и Inbox/Outbox в PostgreSQL.
+В контур подключён provider-simulator v0.2.0. Он говорит на legacy callback (`providerPaymentId`, `operationId`, `result`, `message`, `occurredAt`) и не подписывает receipt v1. Ядро ReliaPay уже умеет generic HTTP, HMAC над исходными body bytes и Inbox/Outbox в PostgreSQL.
 
-Если Python начнёт выбирать flow, limit, transition или финальный status, граница недели 1–2 размоется: периметр станет оркестратором, а карты в PostgreSQL — декорацией. Если adapter получит учётные данные БД, callback-контур сможет писать в таблицы напрямую. Если dispatcher или reconciler получат table DML, checksum-роли `outbox_dispatcher` / `inbox_reconciler` перестанут быть ACL.
+Если Python начнёт выбирать flow, limit, transition или финальный status, граница доверия размоется: периметр станет оркестратором, а карты в PostgreSQL — декорацией. Если adapter получит учётные данные БД, callback-контур сможет писать в таблицы напрямую. Если dispatcher или reconciler получат table DML, checksum-роли `outbox_dispatcher` / `inbox_reconciler` перестанут быть ACL.
 
 Нужен антикоррупционный слой: перевод провайдера во внутренний контракт и узкий SQL-доступ только к фиксированным функциям `delivery.*`.
 

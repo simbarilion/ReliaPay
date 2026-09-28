@@ -43,7 +43,7 @@ Health шлюза:
 
 Неверный JSON-тип claim даёт `401 auth.invalid`, а не 500 фреймворка.
 
-Учебные principals:
+Демо-principals:
 
 | `sub` | `consumer` | `scope` |
 | --- | --- | --- |
@@ -146,7 +146,7 @@ Health шлюза:
 
 Runtime коммитит транзакцию только на `ok` с допустимым outcome и валидным result. Иначе rollback. См. [ADR-0002](adr/0002-technical-vs-domain-result.md).
 
-## Обязательные actions недели 1
+## Базовые платёжные actions
 
 ### `payment.request` v1
 
@@ -155,7 +155,7 @@ Runtime коммитит транзакцию только на `ok` с допу
 - outcome: `CREATED`;
 - payload: `operationKind` (`PAYMENT_EXECUTION` \| `PAYMENT_APPROVAL`), `amount` (строка), `currency` = `RUB`;
 - клиент не передаёт имя workflow и финальный status;
-- `process_id` на неделе 1 равен `null`.
+- при создании operation через `payment.request` поле `process_id` равно `null` (process появляется после старта workflow).
 
 Повтор того же ключа и payload возвращает тот же `operationId`. Другой payload с тем же ключом — `409 idempotency.conflict`.
 
@@ -166,7 +166,7 @@ Runtime коммитит транзакцию только на `ok` с допу
 - outcome: `FOUND`;
 - payload: `{ "operationId": "<uuid>" }`.
 
-## Обязательные actions недели 3
+## Actions доставки и ручного решения
 
 ### `payment.submit` v1
 
@@ -224,13 +224,13 @@ flow signal <processId> --type <type> --message-id <id> --payload <file>
 
 ## autocheck
 
-Read-only views недели 1: `contract_info`, `action_definitions`, `action_dispatches`, `operations`, `operation_events`.
+Базовые read-only views: `contract_info`, `action_definitions`, `action_dispatches`, `operations`, `operation_events`.
 
-Неделя 2 добавляет: `flow_versions`, `processes`, `steps`, `jobs`, `attempts`, `signals`, `workflow_events`.
+Views workflow: `flow_versions`, `processes`, `steps`, `jobs`, `attempts`, `signals`, `workflow_events`.
 
-Неделя 3 добавляет: `external_requests`, `receipts`, `outbox`, `inbox`, `decisions`. Views не публикуют capability, JWT, HMAC, полный callback и сырой reason.
+Views доставки и решений: `external_requests`, `receipts`, `outbox`, `inbox`, `decisions`. Views не публикуют capability, JWT, HMAC, полный callback и сырой reason.
 
 `autocheck.contract_info.contract_version` = `course-1`.  
 `action_dispatches.status` ∈ `OK`, `ERROR`.  
-`operations.status` ∈ `CREATED`, `PROCESSING`, `COMPLETED`, `REJECTED`. На неделе 1 создаётся `CREATED`.  
+`operations.status` ∈ `CREATED`, `PROCESSING`, `COMPLETED`, `REJECTED`. `payment.request` создаёт operation со статусом `CREATED`.  
 `payload_hash` — lowercase SHA-256 hex. Полный payload во views не публикуется.

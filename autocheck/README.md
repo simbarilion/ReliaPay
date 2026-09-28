@@ -1,8 +1,8 @@
-# Контракт public checker недели 4
+# Контракт public checker надёжности
 
 ## Доверенные seams
 
-- Compose services из задания;
+- Compose services решения;
 - gateway на host-порту 8080 в исходном contract и на изолированном случайном loopback-порту при проверке;
 - generic HTTP actions;
 - provider v0.2.0 audit;
@@ -20,9 +20,9 @@ Checker не вызывает `course.sh` на host и не использует
 ./check.sh --repo /path/to/participant-solution
 ```
 
-`cli` обязан быть объявлен, но может успешно завершаться как one-shot service. Checker не требует имени `dotnet` у C# process: technology boundary подтверждается контрактом предыдущих недель, поведением services и неизменностью C# images в hidden run.
+`cli` обязан быть объявлен, но может успешно завершаться как one-shot service. Checker не требует имени `dotnet` у C# process: technology boundary подтверждается опубликованным контрактом, поведением services и неизменностью C# images в hidden run.
 
-## Public phases
+## Этапы public-прогона
 
 | Phase | Проверка |
 |---|---|

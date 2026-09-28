@@ -5,7 +5,7 @@
 
 ## Контекст
 
-Клиент курса видит один HTTP-вход. Нужно одновременно:
+Внешний клиент видит один HTTP-вход. Нужно одновременно:
 
 - не отдавать наружу PostgreSQL, внутренние DNS-имена и каталог действий;
 - не заставлять gateway знать предметные маршруты, JWT и SQL;
@@ -42,5 +42,5 @@ Course CLI стоит отдельно: publication-роль, миграции �
 - Новый action появляется как SQL-функция + manifest + `action publish` / `action activate`. Образы gateway и api пересобирать не нужно.
 - Компрометация gateway не даёт прямого доступа к таблицам `app.*` и к publication-паролю.
 - Цена решения: два сетевых хопа и отдельный health-контракт. Это принимается ради проверяемой границы доверия.
-- Generic worker недели 2 не расширяет gateway: он ходит в PostgreSQL ролью `workflow_worker`. См. [ADR-0003](0003-worker-lease-transaction.md).
-- Python-периметр недели 3 не расширяет gateway и не выбирает flow: adapter переводит legacy callback, роли доставки вызывают только `delivery.*`. См. [ADR-0004](0004-python-anti-corruption.md).
+- Generic worker не расширяет gateway: он ходит в PostgreSQL ролью `workflow_worker`. См. [ADR-0003](0003-worker-lease-transaction.md).
+- Python-периметр доставки не расширяет gateway и не выбирает flow: adapter переводит legacy callback, роли доставки вызывают только `delivery.*`. См. [ADR-0004](0004-python-anti-corruption.md).

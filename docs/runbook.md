@@ -149,7 +149,7 @@ docker compose ps
 docker compose logs --tail=100 worker-a outbox-dispatcher api
 ```
 
-Не используйте `docker compose down -v` на живом учебном томе `course_data`: это удалит PostgreSQL data directory. Для остановки достаточно `docker compose down` (том сохранится) или `stop` отдельных сервисов.
+Не используйте `docker compose down -v` на живом локальном томе `course_data`: это удалит PostgreSQL data directory. Для остановки достаточно `docker compose down` (том сохранится) или `stop` отдельных сервисов.
 
 ## Callback adapter
 
