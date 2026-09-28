@@ -30,7 +30,7 @@ from typing import Any, Callable, Sequence
 MANIFEST_VERSION = "week-4-public-report/v1"
 TOOL_VERSION = "week-4-public-check/0.4"
 PUBLISHED_FIXTURE_DIGEST = (
-    "f6900512f66ea58afe7fe6b739ac02a433573080a7cc6134e8fed4abfec44813"
+    "76376fad19425947e4f8c51f57c56df220db46eb7c7ec6ee162247b3255fd995"
 )
 PUBLISHED_FIXTURE_GENERATOR = "week-4.1"
 PROVIDER_IMAGE = (
