@@ -1,5 +1,6 @@
 using System.Text.Json;
 using ReliaPay.Api.Health;
+using ReliaPay.Api.Metrics;
 using ReliaPay.Api.Http;
 using ReliaPay.Catalog;
 using ReliaPay.Contracts;
@@ -57,6 +58,7 @@ public sealed class Program
         builder.Services.AddSingleton(_ => CourseFailpoint.FromEnvironment());
         builder.Services.AddSingleton<ActionExecutor>();
         builder.Services.AddSingleton<OpenApiDocumentFactory>();
+        builder.Services.AddSingleton<CourseMetricsReader>();
     }
 
     /// <summary>
@@ -69,6 +71,7 @@ public sealed class Program
         app.Use(HideUnhandledExceptionsAsync);
         app.MapGet("/health/live", () => Results.Json(new ApiHealthPayload("live")));
         app.MapGet("/health/ready", CheckReadyAsync);
+        app.MapGet("/metrics", GetMetricsAsync);
         app.MapGet("/openapi/default.json", GetDefaultOpenApiAsync);
         app.MapGet("/openapi/actions/{module}/{action}/{fileName}", GetActionOpenApiAsync);
         app.MapPost("/api/{module}/{action}", ExecuteActionAsync);
@@ -293,6 +296,23 @@ public sealed class Program
     }
 
 
+    /// <summary>
+    /// OpenMetrics проекция обязательных series курса.
+    /// </summary>
+    private static async Task<IResult> GetMetricsAsync(
+        CourseMetricsReader metrics,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            byte[] body = await metrics.ReadOpenMetricsAsync(cancellationToken).ConfigureAwait(false);
+            return Results.Bytes(body, OpenMetricsDocument.ContentType);
+        }
+        catch (PostgresUnavailableException)
+        {
+            return Results.Bytes(OpenMetricsDocument.Empty(), OpenMetricsDocument.ContentType);
+        }
+    }
 
     private static IResult InvalidRoute()
     {

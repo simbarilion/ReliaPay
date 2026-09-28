@@ -1,0 +1,27 @@
+{
+  "contract_version": "course-1",
+  "module": "diagnostics",
+  "action": "stalled",
+  "version": 1,
+  "http_method": "POST",
+  "target_schema": "app",
+  "target_function": "diagnostics_stalled",
+  "request_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  },
+  "response_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": true
+  },
+  "outcomes": ["FOUND"],
+  "required_policy": ["diagnostics:read"],
+  "idempotency_mode": "none",
+  "idempotency_scope": "none",
+  "timeout_ms": 10000,
+  "enabled": false,
+  "is_default": false
+}

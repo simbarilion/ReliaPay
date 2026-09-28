@@ -120,4 +120,9 @@ public static class ErrorCodes
     /// Manual-шаг уже решён или решение не совпадает с текущим ожиданием.
     /// </summary>
     public const string WorkflowDecisionConflict = "workflow.decision_conflict";
+
+    /// <summary>
+    /// diagnostics.trace: identifier не связан ни с одной известной цепочкой.
+    /// </summary>
+    public const string DiagnosticsTraceNotFound = "diagnostics.trace_not_found";
 }

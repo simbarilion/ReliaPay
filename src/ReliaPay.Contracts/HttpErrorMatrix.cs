@@ -22,6 +22,7 @@ public static class HttpErrorMatrix
             ErrorCodes.ReceiptSignatureRequired => 403,
             ErrorCodes.ActionNotFound => 404,
             ErrorCodes.OperationNotFound => 404,
+            ErrorCodes.DiagnosticsTraceNotFound => 404,
             ErrorCodes.IdempotencyConflict => 409,
             ErrorCodes.WorkflowDecisionConflict => 409,
             ErrorCodes.PayloadInvalid => 422,
