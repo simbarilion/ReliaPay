@@ -33,6 +33,11 @@ if [ -z "${COURSE_INBOX_PASSWORD}" ]; then
   exit 1
 fi
 
+if [ -z "${COURSE_AUTOCHECK_PASSWORD}" ]; then
+  echo "COURSE_AUTOCHECK_PASSWORD is required for role bootstrap" >&2
+  exit 1
+fi
+
 psql -v ON_ERROR_STOP=1 \
   --username "$POSTGRES_USER" \
   --dbname "$POSTGRES_DB" \
@@ -40,13 +45,15 @@ psql -v ON_ERROR_STOP=1 \
   --set=run_password="$COURSE_RUNTIME_PASSWORD" \
   --set=worker_password="$COURSE_WORKER_PASSWORD" \
   --set=outbox_password="$COURSE_OUTBOX_PASSWORD" \
-  --set=inbox_password="$COURSE_INBOX_PASSWORD" <<SQL
+  --set=inbox_password="$COURSE_INBOX_PASSWORD" \
+  --set=autocheck_password="$COURSE_AUTOCHECK_PASSWORD" <<SQL
 CREATE ROLE course_owner NOLOGIN NOSUPERUSER INHERIT NOCREATEDB NOCREATEROLE NOREPLICATION;
 CREATE ROLE course_publication LOGIN NOSUPERUSER NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD :'pub_password';
 CREATE ROLE course_runtime LOGIN NOSUPERUSER INHERIT NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD :'run_password';
 CREATE ROLE workflow_worker LOGIN NOSUPERUSER NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD :'worker_password';
 CREATE ROLE outbox_dispatcher LOGIN NOSUPERUSER NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD :'outbox_password';
 CREATE ROLE inbox_reconciler LOGIN NOSUPERUSER NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD :'inbox_password';
+CREATE ROLE autocheck_reader LOGIN NOSUPERUSER NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD :'autocheck_password';
 
 GRANT course_owner TO course_publication WITH INHERIT FALSE;
 
@@ -56,6 +63,7 @@ GRANT CONNECT ON DATABASE ${POSTGRES_DB} TO course_runtime;
 GRANT CONNECT ON DATABASE ${POSTGRES_DB} TO workflow_worker;
 GRANT CONNECT ON DATABASE ${POSTGRES_DB} TO outbox_dispatcher;
 GRANT CONNECT ON DATABASE ${POSTGRES_DB} TO inbox_reconciler;
+GRANT CONNECT ON DATABASE ${POSTGRES_DB} TO autocheck_reader;
 GRANT CREATE ON DATABASE ${POSTGRES_DB} TO course_owner;
 
 CREATE SCHEMA api AUTHORIZATION course_owner;
@@ -77,6 +85,7 @@ GRANT USAGE ON SCHEMA workflow TO course_runtime;
 GRANT USAGE ON SCHEMA api, workflow TO workflow_worker;
 GRANT USAGE ON SCHEMA delivery TO outbox_dispatcher;
 GRANT USAGE ON SCHEMA delivery TO inbox_reconciler;
+GRANT USAGE ON SCHEMA autocheck TO autocheck_reader;
 
 CREATE TABLE api.schema_migrations (
     filename text PRIMARY KEY,
