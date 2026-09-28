@@ -1782,6 +1782,7 @@ class ComposeHarness:
             "SELECT COALESCE(jsonb_agg(to_jsonb(q)), '[]'::jsonb)::text "
             f"FROM ({query}) AS q"
         )
+        pg_host = os.environ.get("COURSE_CHECK_PGHOST", "127.0.0.1")
         result = self.run(
             (
                 "psql",
@@ -1791,7 +1792,7 @@ class ComposeHarness:
                 "-U",
                 "autocheck_reader",
                 "-h",
-                "127.0.0.1",
+                pg_host,
                 "-p",
                 str(self.probe_ports["postgres"]),
                 "-d",
@@ -1808,7 +1809,14 @@ class ComposeHarness:
             },
         )
         if not result.ok:
-            raise ContractError("required read-only PostgreSQL query failed")
+            detail = (result.stderr or result.stdout or "").strip().replace("\n", " | ")
+            if len(detail) > 500:
+                detail = detail[-500:]
+            raise ContractError(
+                f"required read-only PostgreSQL query failed: {detail}"
+                if detail
+                else "required read-only PostgreSQL query failed"
+            )
         try:
             value = json.loads(result.stdout.strip())
         except json.JSONDecodeError as error:
