@@ -9,6 +9,7 @@ import psycopg
 
 from perimeter.classify import AttemptKind, classify_provider_attempt
 from perimeter.config import ConfigError, DispatcherConfig
+from perimeter.obshttp import pg_ready, start_obs_server
 from perimeter import failpoint
 from perimeter.httpclient import TransportError, post_bytes
 from perimeter.provider_body import provider_payment_bytes
@@ -41,22 +42,34 @@ def run() -> None:
     signal.signal(signal.SIGINT, _handle_stop)
     with psycopg.connect(autocommit=True) as connection:
         _apply_outbox_settings(connection, cfg)
-        while not _STOP:
-            claims = _claim(connection, cfg.owner)
-            if not claims:
-                time.sleep(cfg.poll_sec)
-                continue
-            for claim in claims:
-                if _STOP:
-                    return
-                failpoint.hit(
-                    failpoint.AFTER_OUTBOX_CLAIM,
-                    cfg.owner,
-                    should_stop=lambda: _STOP,
-                )
-                if _STOP:
-                    return
-                _deliver(connection, cfg, claim)
+        obs = start_obs_server(
+            host="0.0.0.0",
+            port=8080,
+            ready_check=lambda: pg_ready(connection),
+        )
+        try:
+            _poll_loop(connection, cfg)
+        finally:
+            obs.shutdown()
+
+
+def _poll_loop(connection: psycopg.Connection, cfg: DispatcherConfig) -> None:
+    while not _STOP:
+        claims = _claim(connection, cfg.owner)
+        if not claims:
+            time.sleep(cfg.poll_sec)
+            continue
+        for claim in claims:
+            if _STOP:
+                return
+            failpoint.hit(
+                failpoint.AFTER_OUTBOX_CLAIM,
+                cfg.owner,
+                should_stop=lambda: _STOP,
+            )
+            if _STOP:
+                return
+            _deliver(connection, cfg, claim)
 
 
 def _apply_outbox_settings(connection: psycopg.Connection, cfg: DispatcherConfig) -> None:

@@ -1,7 +1,12 @@
+using System.Text.Json.Serialization;
+
 namespace ReliaPay.Api.Health;
 
 /// <summary>
-/// Компактное тело health-ответа внутреннего runtime.
+/// Минимальный JSON health-ответ внутреннего runtime.
 /// </summary>
-/// <param name="Status">Краткий статус процесса: <c>live</c> или <c>ready</c>.</param>
-public sealed record ApiHealthPayload(string Status);
+/// <param name="Status">Статус: <c>live</c>, <c>ready</c> или <c>not_ready</c>.</param>
+/// <param name="Code">Код зависимости при <c>not_ready</c>; иначе null и не сериализуется.</param>
+public sealed record ApiHealthPayload(
+    string Status,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Code = null);

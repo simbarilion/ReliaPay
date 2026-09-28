@@ -40,6 +40,8 @@ public sealed class Program
             WorkflowWorkerStore store = new(connections);
             WorkerFailpoint failpoint = new(settings.Failpoint, Console.Out);
             WorkflowWorker worker = new(settings, store, executor, validator, failpoint);
+            await using ObservabilityHost obs = new(connections);
+            obs.Start();
             await worker.RunAsync(shutdown.Token).ConfigureAwait(false);
             return 0;
         }

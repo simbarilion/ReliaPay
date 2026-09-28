@@ -8,6 +8,7 @@ from typing import Callable
 from urllib.parse import urlsplit
 
 from perimeter.config import AdapterConfig, ConfigError
+from perimeter.obshttp import gateway_live_url_from_receipt_api, probe_http_live
 from perimeter.crypto import sign_body_v1
 from perimeter.httpclient import TransportError, post_bytes
 from perimeter.legacy import LegacyCallbackError, parse_legacy_callback
@@ -115,6 +116,41 @@ def run() -> None:
                 self.wfile.write(result.body)
 
         def do_GET(self) -> None:  # noqa: N802
+            path = urlsplit(self.path).path
+            if path == "/health/live":
+                body = b'{"status":"live"}'
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if path == "/health/ready":
+                gateway_url = gateway_live_url_from_receipt_api(cfg.receipt_api_url)
+                ok = probe_http_live(gateway_url)
+                if ok:
+                    body = b'{"status":"ready"}'
+                    status = 200
+                else:
+                    body = b'{"status":"not_ready","code":"dependency.unavailable"}'
+                    status = 503
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if path == "/metrics":
+                body = b"# EOF\n"
+                self.send_response(200)
+                self.send_header(
+                    "Content-Type",
+                    "application/openmetrics-text; version=1.0.0; charset=utf-8",
+                )
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
             self.send_response(404)
             self.send_header("Content-Length", "0")
             self.end_headers()

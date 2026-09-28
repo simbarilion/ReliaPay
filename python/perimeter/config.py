@@ -58,7 +58,7 @@ class AdapterConfig:
             hmac_secret=_require("PROVIDER_HMAC_SECRET"),
             receipt_api_url=_require("RECEIPT_API_URL"),
             listen_host="0.0.0.0",
-            listen_port=8080,
+            listen_port=8082,
             api_timeout_sec=8.0,
         )
 

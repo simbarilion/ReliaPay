@@ -93,7 +93,9 @@ public sealed class Program
             return Results.Json(new ApiHealthPayload("ready"));
         }
 
-        return Results.Json(new ApiHealthPayload("unavailable"), statusCode: StatusCodes.Status503ServiceUnavailable);
+        return Results.Json(
+            new ApiHealthPayload("not_ready", "dependency.unavailable"),
+            statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 
     /// <summary>
@@ -289,6 +291,8 @@ public sealed class Program
                 .ConfigureAwait(false);
         }
     }
+
+
 
     private static IResult InvalidRoute()
     {
