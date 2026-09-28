@@ -88,33 +88,20 @@ API принимает запрос → пишет состояние в **Progr
 - [x] Зафиксирован baseline Week 3: Compose без `*-b`; есть `course_data`; один dispatcher/reconciler; `COURSE_FAILPOINT` уже прокинут частично.
 - [x] Заменён `autocheck/` на Week 4; каталог задания в `.gitignore`.
 - [x] Сводка гайда «Пережив сбой и докажи результат» внесена в этот план (архитектура, DEAD, FailPoints, логи/трейс).
-- [ ] Заполнить таблицу **«Граница commit → durable fact → кто восстанавливает»** (перед кодом) — шаблон ниже.
-- [ ] Заполнить **таблицу идентичности** (JobId / ExecutionId / AttemptId / LeaseVersion / ExternalRequestId / body).
+- [x] Заполнить таблицу **«Граница commit → durable fact → кто восстанавливает»** — см. `.workplace/week4-boundary-tables.md` (факты ReliaPay).
+- [x] Заполнить **таблицу идентичности** (JobId / ExecutionId / AttemptId / LeaseVersion / ExternalRequestId / body) — см. `.workplace/week4-boundary-tables.md`.
 - [ ] Сверить `.env.example` / Compose с полной таблицей переменных Week 4.
 - [ ] Инвентаризация: health/metrics, Outbox DEAD-поля, lease fencing, diagnostics actions — что уже есть vs пробелы.
 
 **Выход фазы:** живой план + baseline gaps + две заполненные таблицы.
 
-### Шаблон: граница commit / durable fact / owner recovery
+### Таблицы границы commit / идентичности
 
-| Ситуация | Что уже в Postgres после commit | Кто подхватывает | Чего нельзя сделать |
-|----------|----------------------------------|------------------|---------------------|
-| Упал процесс в TX Operation+Outbox до commit | ничего durable | повтор с тем же idempotency / API | считать оплату совершённой |
-| Outbox claimed, HTTP ещё не ушёл | owner, leaseVersion, lease_until | другой Dispatcher после expiry | второй claim без fencing |
-| HTTP ушёл, ответ потерян (Lost Response) | attempt + externalRequestId | retry тем же ExternalRequestId; после бюджета → DEAD | REJECTED / FAILED операции |
-| Worker A завис после claim Job | job lease + leaseVersion | Worker B с новой version | stale finish от A |
-| Valid late receipt после DEAD | receipt + delivery → CONFIRMED | Reconciler / receipt path | оставить «ложный» предметный отказ |
+Заполненные **реальными** фактами ReliaPay (SQL `delivery.*` / `workflow.claim_jobs`, `dispatcher.py`, `payment_prepare_external`):
 
-### Шаблон: таблица идентичности
+→ **`.workplace/week4-boundary-tables.md`**
 
-| Поле | Стабильность | Правило |
-|------|--------------|---------|
-| JobId | стабильный | один job на шаг |
-| ExecutionId | стабильный | одна execution |
-| AttemptId | **новый** на попытку | не переиспользовать |
-| LeaseVersion | **растёт** | fencing |
-| ExternalRequestId | **одинаковый** на все attempts доставки | иначе второй платёж |
-| Тело запроса провайдеру | **одинаковое** | иначе второй платёж |
+Кратко: claim Outbox короткий + HTTP вне TX; fencing по `lease_owner`+`lease_version`; `ExternalRequestId`=`executionId`; body стабилен через `provider_payment_bytes`; `DEAD` ≠ domain reject; пробелы: нет `dead_at`, нет `autocheck_reader`, нет Compose `*-b`.
 
 ---
 
