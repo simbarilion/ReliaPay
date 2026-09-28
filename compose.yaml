@@ -48,6 +48,7 @@ services:
       COURSE_DB_PORT: ${COURSE_DB_PORT:-5432}
       COURSE_DB_NAME: ${COURSE_DB_NAME:-course}
       COURSE_RUNTIME_USER: ${COURSE_RUNTIME_USER:-course_runtime}
+      PGUSER: course_runtime
       COURSE_RUNTIME_PASSWORD: ${COURSE_RUNTIME_PASSWORD:-moduledev-runtime-local-only}
       PROVIDER_HMAC_SECRET: ${PROVIDER_HMAC_SECRET}
       COURSE_TEST_PROFILE: ${COURSE_TEST_PROFILE:-1}
@@ -133,6 +134,7 @@ services:
       COURSE_DB_PORT: ${COURSE_DB_PORT:-5432}
       COURSE_DB_NAME: ${COURSE_DB_NAME:-course}
       COURSE_WORKER_USER: ${COURSE_WORKER_USER:-workflow_worker}
+      PGUSER: workflow_worker
       COURSE_WORKER_PASSWORD: ${COURSE_WORKER_PASSWORD:-moduledev-worker-local-only}
       COURSE_WORKER_INSTANCE_ID: worker-a
       COURSE_JWT_ISSUER: ${COURSE_JWT_ISSUER}
@@ -156,6 +158,7 @@ services:
       COURSE_DB_PORT: ${COURSE_DB_PORT:-5432}
       COURSE_DB_NAME: ${COURSE_DB_NAME:-course}
       COURSE_WORKER_USER: ${COURSE_WORKER_USER:-workflow_worker}
+      PGUSER: workflow_worker
       COURSE_WORKER_PASSWORD: ${COURSE_WORKER_PASSWORD:-moduledev-worker-local-only}
       COURSE_WORKER_INSTANCE_ID: worker-b
       COURSE_JWT_ISSUER: ${COURSE_JWT_ISSUER}
@@ -263,7 +266,7 @@ services:
     image: ghcr.io/fintech-dev-lab/internship-provider-simulator:v0.2.0@sha256:70e5e0dd9ab8425be84de431ec74516f9bedf5d5529077358e2e2b2037fe0c74
     environment:
       CALLBACK_URL: http://receipt-adapter:8082/callbacks/provider-v02/${PROVIDER_CALLBACK_CAPABILITY}
-      PROVIDER_AUDIT_TOKEN: ${PROVIDER_AUDIT_TOKEN:-}
+      AUDIT_TOKEN: ${PROVIDER_AUDIT_TOKEN}
     depends_on:
       receipt-adapter:
         condition: service_started
