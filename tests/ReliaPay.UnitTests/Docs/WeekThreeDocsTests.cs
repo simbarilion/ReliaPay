@@ -68,14 +68,32 @@ public sealed class WeekThreeDocsTests
         foreach (string file in Directory.GetFiles(perimeter, "*.py"))
         {
             string source = File.ReadAllText(file);
-            source.Should().NotContain("print(");
-            source.Should().NotContain("logging.");
-            source.Should().NotContain("print (");
+            // Env secret names must not be interpolated into logs/prints.
+            source.Should().NotContain("os.environ[\"PROVIDER_CALLBACK_TOKEN\"]");
+            source.Should().NotContain("os.environ[\"COURSE_JWT_SIGNING_KEY\"]");
+            source.Should().NotContain("os.environ[\"PROVIDER_HMAC_SECRET\"]");
+            source.Should().NotContain("print(payload");
+            source.Should().NotContain("print(body");
+            source.Should().NotContain("print(token");
         }
 
         string adapter = File.ReadAllText(Path.Combine(perimeter, "adapter.py"));
         adapter.Should().Contain("def log_message");
         adapter.Should().Contain("del format, args");
+
+        string jsonlog = File.ReadAllText(Path.Combine(perimeter, "jsonlog.py"));
+        jsonlog.Should().Contain("_FORBIDDEN_FRAGMENTS");
+        jsonlog.Should().Contain("jwt");
+        jsonlog.Should().Contain("hmac");
+        jsonlog.Should().Contain("password");
+        jsonlog.Should().Contain("secret");
+
+        string failpoint = File.ReadAllText(Path.Combine(perimeter, "failpoint.py"));
+        failpoint.Should().Contain("failpoint.reached");
+        failpoint.Should().Contain("print(line, flush=True)");
+        // Ack payload is only event/name/instanceId ? no token fields.
+        failpoint.Should().NotContain("token");
+        failpoint.Should().NotContain("secret");
     }
 
     [Fact]

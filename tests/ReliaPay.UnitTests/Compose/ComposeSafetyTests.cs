@@ -43,8 +43,13 @@ public sealed class ComposeSafetyTests
         compose.Should().NotContain("moduledev-course-local-hs256-key");
         compose.Should().Contain(
             "ghcr.io/fintech-dev-lab/internship-provider-simulator:v0.2.0@sha256:70e5e0dd9ab8425be84de431ec74516f9bedf5d5529077358e2e2b2037fe0c74");
-        compose.Should().Contain("http://receipt-adapter:8080/callbacks/provider-v02/${PROVIDER_CALLBACK_CAPABILITY}");
-        CountOccurrences(compose, "image: reliapay-python-perimeter:local").Should().Be(3);
+        compose.Should().Contain("http://receipt-adapter:8082/callbacks/provider-v02/${PROVIDER_CALLBACK_CAPABILITY}");
+        // Week 4: dual dispatcher/reconciler share one local Python image (5 services).
+        CountOccurrences(compose, "image: reliapay-python-perimeter:local").Should().Be(5);
+        compose.Should().Contain("outbox-dispatcher-b:");
+        compose.Should().Contain("inbox-reconciler-b:");
+        compose.Should().Contain("OUTBOX_OWNER: ${OUTBOX_OWNER:-outbox-dispatcher}");
+        compose.Should().Contain("OUTBOX_OWNER: ${OUTBOX_OWNER_B:-outbox-dispatcher-b}");
         CountOccurrences(compose, "PGUSER: outbox_dispatcher").Should().Be(1);
         CountOccurrences(compose, "PGUSER: inbox_reconciler").Should().Be(1);
         AdapterService(compose).Should().NotContain("PG");
