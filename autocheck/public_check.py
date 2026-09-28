@@ -1490,7 +1490,10 @@ class ComposeHarness:
         )
         if not probe.ok:
             raise EnvironmentFailure("Docker daemon became unavailable")
-        raise ContractError(message)
+        detail = (result.stderr or result.stdout or "").strip().replace("\n", " | ")
+        if len(detail) > 800:
+            detail = detail[-800:]
+        raise ContractError(f"{message}: {detail}" if detail else message)
 
     def compose(
         self,
@@ -2002,13 +2005,31 @@ class PublicChecker:
 
     @staticmethod
     def _free_ports(count: int) -> list[int]:
+        """Allocate loopback ports outside common Windows Hyper-V exclusion bands."""
+        # Prefer mid-range ports: ephemeral/high ports often fall into reserved ranges
+        # on Docker Desktop for Windows and then fail at compose publish time.
+        candidates = list(range(18000, 45000))
+        secrets.SystemRandom().shuffle(candidates)
         sockets: list[socket.socket] = []
+        ports: list[int] = []
         try:
-            for _ in range(count):
+            for port in candidates:
+                if len(ports) >= count:
+                    break
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.bind(("127.0.0.1", 0))
+                try:
+                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    sock.bind(("127.0.0.1", port))
+                except OSError:
+                    sock.close()
+                    continue
                 sockets.append(sock)
-            return [int(sock.getsockname()[1]) for sock in sockets]
+                ports.append(port)
+            if len(ports) < count:
+                raise EnvironmentFailure(
+                    f"could not allocate {count} free loopback ports in 18000-44999"
+                )
+            return ports
         finally:
             for sock in sockets:
                 sock.close()
