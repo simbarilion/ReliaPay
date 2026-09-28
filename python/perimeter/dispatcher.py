@@ -9,6 +9,7 @@ import psycopg
 
 from perimeter.classify import AttemptKind, classify_provider_attempt
 from perimeter.config import ConfigError, DispatcherConfig
+from perimeter import failpoint
 from perimeter.httpclient import TransportError, post_bytes
 from perimeter.provider_body import provider_payment_bytes
 
@@ -46,6 +47,13 @@ def run() -> None:
                 time.sleep(cfg.poll_sec)
                 continue
             for claim in claims:
+                if _STOP:
+                    return
+                failpoint.hit(
+                    failpoint.AFTER_OUTBOX_CLAIM,
+                    cfg.owner,
+                    should_stop=lambda: _STOP,
+                )
                 if _STOP:
                     return
                 _deliver(connection, cfg, claim)
@@ -107,6 +115,13 @@ def _deliver(connection: psycopg.Connection, cfg: DispatcherConfig, claim: Claim
         result = classify_provider_attempt(status, payload)
     except (TimeoutError, TransportError, OSError):
         result = classify_provider_attempt(transport_error=True)
+    failpoint.hit(
+        failpoint.AFTER_PROVIDER_RESPONSE,
+        cfg.owner,
+        should_stop=lambda: _STOP,
+    )
+    if _STOP:
+        return
     if result.kind == AttemptKind.SUCCEED:
         _succeed(connection, cfg.owner, claim, result.provider_payment_id or "")
         return
