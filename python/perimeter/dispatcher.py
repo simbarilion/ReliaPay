@@ -39,6 +39,7 @@ def run() -> None:
     signal.signal(signal.SIGTERM, _handle_stop)
     signal.signal(signal.SIGINT, _handle_stop)
     with psycopg.connect(autocommit=True) as connection:
+        _apply_outbox_settings(connection, cfg)
         while not _STOP:
             claims = _claim(connection, cfg.owner)
             if not claims:
@@ -48,6 +49,25 @@ def run() -> None:
                 if _STOP:
                     return
                 _deliver(connection, cfg, claim)
+
+
+def _apply_outbox_settings(connection: psycopg.Connection, cfg: DispatcherConfig) -> None:
+    """Прокидывает COURSE_OUTBOX_* в session GUC для claim/fail (сигнатуры SQL фиксированы)."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT set_config('app.outbox_lease_ms', %s, false),"
+            " set_config('app.outbox_max_attempts', %s, false),"
+            " set_config('app.outbox_backoff_base_ms', %s, false),"
+            " set_config('app.outbox_backoff_max_ms', %s, false),"
+            " set_config('app.outbox_jitter_max_ms', %s, false)",
+            (
+                str(cfg.lease_ms),
+                str(cfg.max_attempts),
+                str(cfg.backoff_base_ms),
+                str(cfg.backoff_max_ms),
+                str(cfg.jitter_max_ms),
+            ),
+        )
 
 
 def _claim(connection: psycopg.Connection, owner: str) -> list[Claim]:
