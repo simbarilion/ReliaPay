@@ -54,6 +54,7 @@ public sealed class Program
         builder.Services.AddSingleton(_ => new PostgresConnectionFactory(PostgresEndpoints.FromRuntimeEnvironment()));
         builder.Services.AddSingleton<ActionCatalogReader>();
         builder.Services.AddSingleton<JsonDocumentValidator>();
+        builder.Services.AddSingleton(_ => CourseFailpoint.FromEnvironment());
         builder.Services.AddSingleton<ActionExecutor>();
         builder.Services.AddSingleton<OpenApiDocumentFactory>();
     }

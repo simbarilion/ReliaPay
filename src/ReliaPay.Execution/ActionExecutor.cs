@@ -28,6 +28,7 @@ public sealed class ActionExecutor
     private readonly PostgresConnectionFactory _connections;
     private readonly JsonDocumentValidator _validator;
     private readonly ProviderHmacOptions _hmac;
+    private readonly CourseFailpoint _failpoint;
 
     /// <summary>
     /// Создаёт исполнитель поверх catalog, runtime-соединений, JSON Schema и HMAC-ключа.
@@ -40,11 +41,13 @@ public sealed class ActionExecutor
         ActionCatalogReader catalog,
         PostgresConnectionFactory connections,
         JsonDocumentValidator validator,
-        ProviderHmacOptions hmac)
-        : this(connections, validator, catalog, hmac)
+        ProviderHmacOptions hmac,
+        CourseFailpoint failpoint)
+        : this(connections, validator, catalog, hmac, failpoint)
     {
         ArgumentNullException.ThrowIfNull(catalog);
         ArgumentNullException.ThrowIfNull(hmac);
+        ArgumentNullException.ThrowIfNull(failpoint);
     }
 
     /// <summary>
@@ -55,7 +58,7 @@ public sealed class ActionExecutor
     public ActionExecutor(
         PostgresConnectionFactory connections,
         JsonDocumentValidator validator)
-        : this(connections, validator, catalog: null, hmac: new ProviderHmacOptions([]))
+        : this(connections, validator, catalog: null, hmac: new ProviderHmacOptions([]), failpoint: null)
     {
     }
 
@@ -63,7 +66,8 @@ public sealed class ActionExecutor
         PostgresConnectionFactory connections,
         JsonDocumentValidator validator,
         ActionCatalogReader? catalog,
-        ProviderHmacOptions hmac)
+        ProviderHmacOptions hmac,
+        CourseFailpoint? failpoint)
     {
         ArgumentNullException.ThrowIfNull(connections);
         ArgumentNullException.ThrowIfNull(validator);
@@ -72,6 +76,7 @@ public sealed class ActionExecutor
         _connections = connections;
         _validator = validator;
         _hmac = hmac;
+        _failpoint = failpoint ?? CourseFailpoint.Disabled;
     }
 
     /// <summary>
@@ -255,7 +260,7 @@ public sealed class ActionExecutor
                     payloadJson,
                     cancellationToken)
                 .ConfigureAwait(false);
-            return await CompleteInvokeAsync(manifest, context, parsed, transaction, cancellationToken)
+            return await CompleteInvokeAsync(manifest, context, parsed, transaction, httpCancellation, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!httpCancellation.IsCancellationRequested)
@@ -311,6 +316,7 @@ public sealed class ActionExecutor
         TrustedContext context,
         ActionInvokeParseResult parsed,
         NpgsqlTransaction transaction,
+        CancellationToken httpCancellation,
         CancellationToken cancellationToken)
     {
         if (parsed is ActionInvokeParseResult.Failure failure)
@@ -325,13 +331,39 @@ public sealed class ActionExecutor
         }
 
         ActionInvokeParseResult.Success success = (ActionInvokeParseResult.Success)parsed;
+        if (IsWorkflowManual(manifest))
+        {
+            await _failpoint
+                .HitAsync(CourseFailpoint.AfterManualDecision, httpCancellation)
+                .ConfigureAwait(false);
+        }
+
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        if (IsReceiptAccept(manifest))
+        {
+            await _failpoint
+                .HitAsync(CourseFailpoint.AfterInboxSaved, httpCancellation)
+                .ConfigureAwait(false);
+        }
+
         return new ActionHttpSuccess(
             new HttpSuccessEnvelope(
                 "ok",
                 success.Outcome,
                 success.Result,
                 new HttpResponseMeta(context.CorrelationId, manifest.Version)));
+    }
+
+    private static bool IsReceiptAccept(ActionManifest manifest)
+    {
+        return string.Equals(manifest.Module, "receipt", StringComparison.Ordinal)
+            && string.Equals(manifest.Action, "accept", StringComparison.Ordinal);
+    }
+
+    private static bool IsWorkflowManual(ActionManifest manifest)
+    {
+        return string.Equals(manifest.Module, "workflow", StringComparison.Ordinal)
+            && string.Equals(manifest.Action, "manual", StringComparison.Ordinal);
     }
 
     private async Task PersistErrorDispatchAsync(
