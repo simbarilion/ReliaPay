@@ -19,6 +19,16 @@ def _test_profile() -> bool:
     return os.environ.get("COURSE_TEST_PROFILE") == "1"
 
 
+def _env_ms(name: str, default_ms: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default_ms / 1000.0
+    try:
+        return max(0.001, float(raw) / 1000.0)
+    except ValueError as error:
+        raise ConfigError(f"invalid {name}") from error
+
+
 @dataclass(frozen=True)
 class AdapterConfig:
     capability: str
@@ -52,11 +62,13 @@ class DispatcherConfig:
     @staticmethod
     def from_env() -> DispatcherConfig:
         test = _test_profile()
+        default_poll_ms = 100.0 if test else 1000.0
+        default_timeout_ms = 500.0 if test else 5000.0
         return DispatcherConfig(
             owner=_require("OUTBOX_OWNER"),
             provider_url=_require("PROVIDER_URL").rstrip("/"),
-            poll_sec=0.2 if test else 1.0,
-            timeout_sec=0.5 if test else 5.0,
+            poll_sec=_env_ms("COURSE_OUTBOX_POLL_MS", default_poll_ms),
+            timeout_sec=_env_ms("COURSE_PROVIDER_TIMEOUT_MS", default_timeout_ms),
         )
 
 
@@ -71,7 +83,8 @@ class ReconcilerConfig:
         _require("PGDATABASE")
         _require("PGUSER")
         test = _test_profile()
+        default_poll_ms = 500.0 if test else 1000.0
         return ReconcilerConfig(
-            poll_sec=0.2 if test else 1.0,
+            poll_sec=_env_ms("COURSE_INBOX_POLL_MS", default_poll_ms),
             batch_limit=32,
         )
