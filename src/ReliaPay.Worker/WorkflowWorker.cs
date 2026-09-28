@@ -1,9 +1,11 @@
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using ReliaPay.Catalog;
 using ReliaPay.Contracts;
 using ReliaPay.Data;
 using ReliaPay.Execution;
 using ReliaPay.Json;
+using ReliaPay.Observability;
 using ReliaPay.Security;
 
 namespace ReliaPay.Worker;
@@ -18,6 +20,7 @@ public sealed class WorkflowWorker
     private readonly ActionExecutor _executor;
     private readonly JsonDocumentValidator _validator;
     private readonly WorkerFailpoint _failpoint;
+    private readonly ILogger<WorkflowWorker> _logger;
 
     /// <summary>
     /// Создаёт цикл поверх store, executor и failpoint.
@@ -32,18 +35,21 @@ public sealed class WorkflowWorker
         WorkflowWorkerStore store,
         ActionExecutor executor,
         JsonDocumentValidator validator,
-        WorkerFailpoint failpoint)
+        WorkerFailpoint failpoint,
+        ILogger<WorkflowWorker> logger)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(executor);
         ArgumentNullException.ThrowIfNull(validator);
         ArgumentNullException.ThrowIfNull(failpoint);
+        ArgumentNullException.ThrowIfNull(logger);
         _settings = settings;
         _store = store;
         _executor = executor;
         _validator = validator;
         _failpoint = failpoint;
+        _logger = logger;
     }
 
     /// <summary>
@@ -98,6 +104,20 @@ public sealed class WorkflowWorker
 
     private async Task ProcessJobAsync(ClaimedJob job, CancellationToken cancellationToken)
     {
+        Guid correlationId = Guid.NewGuid();
+        using IDisposable? scope = _logger.BeginScope(
+            ReliaPayLogging.ToJobScope(
+                correlationId,
+                job.JobId,
+                job.ProcessId,
+                job.ExecutionId,
+                job.AttemptId,
+                job.LeaseVersion,
+                job.Module,
+                job.Action));
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        _logger.LogInformation("Worker job claimed");
+
         await _failpoint
             .HitAsync(WorkerFailpoint.AfterJobClaim, _settings.InstanceId, cancellationToken)
             .ConfigureAwait(false);
@@ -115,6 +135,7 @@ public sealed class WorkflowWorker
                     retryable: false,
                     cancellationToken)
                 .ConfigureAwait(false);
+            LogJobFinished("failed", mappingError ?? ErrorCodes.WorkflowMappingMissing, started);
             return;
         }
 
@@ -123,11 +144,12 @@ public sealed class WorkflowWorker
         {
             await FailIgnoringStaleAsync(job, ErrorCodes.PayloadInvalid, retryable: false, cancellationToken)
                 .ConfigureAwait(false);
+            LogJobFinished("failed", ErrorCodes.PayloadInvalid, started);
             return;
         }
 
         ActionManifest manifest = job.ToManifest();
-        TrustedContext context = job.ToTrustedContext(Guid.NewGuid(), DateTimeOffset.UtcNow);
+        TrustedContext context = job.ToTrustedContext(correlationId, DateTimeOffset.UtcNow);
 
         NpgsqlConnection? connection = null;
         NpgsqlTransaction? transaction = null;
@@ -149,6 +171,7 @@ public sealed class WorkflowWorker
                         failure.Retryable,
                         cancellationToken)
                     .ConfigureAwait(false);
+                LogJobFinished("failed", failure.Code, started);
                 return;
             }
 
@@ -169,6 +192,7 @@ public sealed class WorkflowWorker
             if (WorkflowWorkerStore.IsLeaseStale(finished))
             {
                 await RollbackQuietlyAsync(transaction).ConfigureAwait(false);
+                LogJobFinished("lease_stale", "workflow.lease_stale", started);
                 return;
             }
 
@@ -182,40 +206,47 @@ public sealed class WorkflowWorker
                         JobFailurePolicy.IsRetryable(code),
                         cancellationToken)
                     .ConfigureAwait(false);
+                LogJobFinished("failed", code, started);
                 return;
             }
 
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            LogJobFinished("ok", success.Outcome, started);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             await RollbackQuietlyAsync(transaction).ConfigureAwait(false);
             await FailIgnoringStaleAsync(job, ErrorCodes.ActionTimeout, retryable: true, cancellationToken)
                 .ConfigureAwait(false);
+            LogJobFinished("failed", ErrorCodes.ActionTimeout, started);
         }
         catch (PostgresException exception) when (exception.SqlState == "57014")
         {
             await RollbackQuietlyAsync(transaction).ConfigureAwait(false);
             await FailIgnoringStaleAsync(job, ErrorCodes.ActionTimeout, retryable: true, cancellationToken)
                 .ConfigureAwait(false);
+            LogJobFinished("failed", ErrorCodes.ActionTimeout, started);
         }
         catch (PostgresUnavailableException)
         {
             await RollbackQuietlyAsync(transaction).ConfigureAwait(false);
             await FailIgnoringStaleAsync(job, ErrorCodes.DependencyUnavailable, retryable: true, cancellationToken)
                 .ConfigureAwait(false);
+            LogJobFinished("failed", ErrorCodes.DependencyUnavailable, started);
         }
         catch (NpgsqlException exception) when (exception is not PostgresException)
         {
             await RollbackQuietlyAsync(transaction).ConfigureAwait(false);
             await FailIgnoringStaleAsync(job, ErrorCodes.DependencyUnavailable, retryable: true, cancellationToken)
                 .ConfigureAwait(false);
+            LogJobFinished("failed", ErrorCodes.DependencyUnavailable, started);
         }
         catch (NpgsqlException)
         {
             await RollbackQuietlyAsync(transaction).ConfigureAwait(false);
             await FailIgnoringStaleAsync(job, ErrorCodes.InternalError, retryable: true, cancellationToken)
                 .ConfigureAwait(false);
+            LogJobFinished("failed", ErrorCodes.InternalError, started);
         }
         finally
         {
@@ -251,6 +282,17 @@ public sealed class WorkflowWorker
         catch (Exception)
         {
         }
+    }
+
+
+    private void LogJobFinished(string status, string outcomeOrCode, long startedTimestamp)
+    {
+        double durationMs = System.Diagnostics.Stopwatch.GetElapsedTime(startedTimestamp).TotalMilliseconds;
+        _logger.LogInformation(
+            "Worker job finished status={status} outcome={outcome} durationMs={durationMs}",
+            status,
+            outcomeOrCode,
+            Math.Round(durationMs, 3));
     }
 
     private async Task DelayQuietlyAsync(CancellationToken cancellationToken)

@@ -39,11 +39,14 @@ public sealed class ReliaPayTraceMiddlewareTests
         string logText = string.Join('\n', logger.Messages);
         logText.Should().Contain("/api/payment/request");
         logText.Should().Contain("200");
-        logText.Should().Contain(trace.CorrelationId.ToString("D"));
+        logger.ScopeValues.Should().Contain(trace.CorrelationId.ToString("D"));
         logText.Should().NotContain("super-secret-jwt-token");
         logText.Should().NotContain("Bearer");
         logText.Should().NotContain("10.00");
         logText.Should().NotContain("key-9");
+        string scopeText = string.Join(' ', logger.ScopeValues.Select(static value => value?.ToString() ?? string.Empty));
+        scopeText.Should().NotContain("super-secret-jwt-token");
+        scopeText.Should().NotContain("Bearer");
     }
 
     [Fact]
@@ -73,9 +76,16 @@ public sealed class ReliaPayTraceMiddlewareTests
         public IDisposable BeginScope<TState>(TState state)
             where TState : notnull
         {
-            if (state is IEnumerable<KeyValuePair<string, object?>> pairs)
+            if (state is IEnumerable<KeyValuePair<string, object>> pairs)
             {
-                foreach (KeyValuePair<string, object?> pair in pairs)
+                foreach (KeyValuePair<string, object> pair in pairs)
+                {
+                    ScopeValues.Add(pair.Value);
+                }
+            }
+            else if (state is IEnumerable<KeyValuePair<string, object?>> nullablePairs)
+            {
+                foreach (KeyValuePair<string, object?> pair in nullablePairs)
                 {
                     ScopeValues.Add(pair.Value);
                 }

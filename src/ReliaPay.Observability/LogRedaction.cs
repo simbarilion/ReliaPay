@@ -1,15 +1,15 @@
 namespace ReliaPay.Observability;
 
 /// <summary>
-/// Скрывает секреты границы доверия: JWT, cookie, ключи. Полный payload в журналы не попадает.
+/// Скрывает секреты и граничные поля: JWT, cookie, ключи. Полный payload в журналы не кладётся.
 /// </summary>
 public static class LogRedaction
 {
     /// <summary>
-    /// Определяет, является ли HTTP-заголовок секретом и не должен попадать в логи и Activity.
+    /// Определяет, является ли HTTP-заголовок секретом и не должен попадать в лог и Activity.
     /// </summary>
     /// <param name="name">Имя заголовка.</param>
-    /// <returns>Истина для Authorization, Cookie и подобных секретов.</returns>
+    /// <returns>Истина для Authorization, Cookie и заголовков секретов.</returns>
     public static bool IsSensitiveHeader(string name)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -26,7 +26,9 @@ public static class LogRedaction
             || name.Contains("password", StringComparison.OrdinalIgnoreCase)
             || name.Contains("secret", StringComparison.OrdinalIgnoreCase)
             || name.Contains("signing", StringComparison.OrdinalIgnoreCase)
-            || name.Contains("signature", StringComparison.OrdinalIgnoreCase);
+            || name.Contains("signature", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("jwt", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("hmac", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -44,7 +46,7 @@ public static class LogRedaction
     /// Определяет, нельзя ли оставлять тег Activity без маски.
     /// </summary>
     /// <param name="tagName">Имя тега.</param>
-    /// <returns>Истина для authorization, cookie, payload и паролей.</returns>
+    /// <returns>Истина для authorization, cookie, payload и секретов.</returns>
     public static bool IsSensitiveTag(string tagName)
     {
         if (string.IsNullOrWhiteSpace(tagName))
@@ -56,6 +58,16 @@ public static class LogRedaction
             || tagName.Contains("cookie", StringComparison.OrdinalIgnoreCase)
             || tagName.Contains("payload", StringComparison.OrdinalIgnoreCase)
             || tagName.Contains("password", StringComparison.OrdinalIgnoreCase)
-            || tagName.Contains("signing", StringComparison.OrdinalIgnoreCase);
+            || tagName.Contains("signing", StringComparison.OrdinalIgnoreCase)
+            || tagName.Contains("secret", StringComparison.OrdinalIgnoreCase)
+            || tagName.Contains("signature", StringComparison.OrdinalIgnoreCase)
+            || tagName.Contains("jwt", StringComparison.OrdinalIgnoreCase)
+            || tagName.Contains("hmac", StringComparison.OrdinalIgnoreCase)
+            || tagName.Equals("reason", StringComparison.OrdinalIgnoreCase)
+            || tagName.Contains("receipt", StringComparison.OrdinalIgnoreCase)
+            || tagName.Equals("message", StringComparison.OrdinalIgnoreCase)
+            || tagName.EndsWith(".message", StringComparison.OrdinalIgnoreCase)
+            || tagName.EndsWith(".reason", StringComparison.OrdinalIgnoreCase)
+            || tagName.EndsWith(".body", StringComparison.OrdinalIgnoreCase);
     }
 }

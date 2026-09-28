@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import signal
 import time
 from dataclasses import dataclass
@@ -11,10 +12,12 @@ from perimeter.classify import AttemptKind, classify_provider_attempt
 from perimeter.config import ConfigError, DispatcherConfig
 from perimeter.obshttp import pg_ready, start_obs_server
 from perimeter import failpoint
+from perimeter import jsonlog
 from perimeter.httpclient import TransportError, post_bytes
 from perimeter.provider_body import provider_payment_bytes
 
 _STOP = False
+_LOG = logging.getLogger("outbox-dispatcher")
 
 
 @dataclass(frozen=True)
@@ -47,6 +50,7 @@ def run() -> None:
             port=8080,
             ready_check=lambda: pg_ready(connection),
         )
+        jsonlog.info(_LOG, "dispatcher started", service=cfg.owner, status="live")
         try:
             _poll_loop(connection, cfg)
         finally:
@@ -116,6 +120,15 @@ def _claim(connection: psycopg.Connection, owner: str) -> list[Claim]:
 
 
 def _deliver(connection: psycopg.Connection, cfg: DispatcherConfig, claim: Claim) -> None:
+    started = time.perf_counter()
+    extra = {
+        "correlationId": str(claim.correlation_id),
+        "externalRequestId": claim.external_request_id,
+        "leaseVersion": claim.lease_version,
+        "outboxId": str(claim.outbox_id),
+        "service": cfg.owner,
+    }
+    jsonlog.info(_LOG, "outbox delivery started", **extra)
     body = provider_payment_bytes(claim.external_request_id, claim.amount, claim.currency)
     headers = {
         "Content-Type": "application/json",
@@ -135,10 +148,28 @@ def _deliver(connection: psycopg.Connection, cfg: DispatcherConfig, claim: Claim
     )
     if _STOP:
         return
+    duration_ms = round((time.perf_counter() - started) * 1000, 3)
     if result.kind == AttemptKind.SUCCEED:
         _succeed(connection, cfg.owner, claim, result.provider_payment_id or "")
+        jsonlog.info(
+            _LOG,
+            "outbox delivery completed",
+            **extra,
+            status="ok",
+            outcome="DELIVERED",
+            durationMs=duration_ms,
+        )
         return
-    _fail(connection, cfg.owner, claim, result.error_code or "transport.error.retryable")
+    error_code = result.error_code or "transport.error.retryable"
+    _fail(connection, cfg.owner, claim, error_code)
+    jsonlog.info(
+        _LOG,
+        "outbox delivery completed",
+        **extra,
+        status="retry_or_dead",
+        errorCode=error_code,
+        durationMs=duration_ms,
+    )
 
 
 def _succeed(

@@ -2,9 +2,10 @@
   <PropertyGroup>
     <RootNamespace>ReliaPay.Observability</RootNamespace>
     <AssemblyName>ReliaPay.Observability</AssemblyName>
-    <Description>Источники Activity, след запроса и редaction секретов без ASP.NET.</Description>
+    <Description>Источник Activity, след запроса, redaction секретов и JSON-консоль логов.</Description>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.0" />
     <ProjectReference Include="..\ReliaPay.Contracts\ReliaPay.Contracts.csproj" />
   </ItemGroup>
 </Project>

@@ -9,16 +9,16 @@ using ReliaPay.Contracts;
 namespace ReliaPay.Observability;
 
 /// <summary>
-/// Регистрация OpenTelemetry и HTTP-middleware трассировки для gateway и api.
+/// Подключение OpenTelemetry и HTTP-middleware трассировки для gateway и api.
 /// </summary>
 public static class ReliaPayTracingExtensions
 {
     /// <summary>
-    /// Подключает консоль со scopes, ActivitySource ReliaPay и instrumentation без JWT и payload.
+    /// Настраивает JSON-консоль со scopes, ActivitySource ReliaPay и instrumentation без JWT и payload.
     /// </summary>
-    /// <param name="builder">Построитель веб-приложения.</param>
-    /// <param name="serviceName">Имя ресурса OpenTelemetry.</param>
-    /// <param name="mintCorrelationId">Истина для gateway: не принимать клиентский UUID.</param>
+    /// <param name="builder">Конструктор веб-приложения.</param>
+    /// <param name="serviceName">Имя сервиса OpenTelemetry.</param>
+    /// <param name="mintCorrelationId">Истина для gateway: сам принимает входящий UUID.</param>
     /// <returns>Тот же builder.</returns>
     public static WebApplicationBuilder AddReliaPayTracing(
         this WebApplicationBuilder builder,
@@ -27,17 +27,7 @@ public static class ReliaPayTracingExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(serviceName);
-        builder.Logging.ClearProviders();
-        builder.Logging.AddSimpleConsole(options =>
-        {
-            options.IncludeScopes = true;
-            options.SingleLine = true;
-            options.TimestampFormat = "HH:mm:ss.fff ";
-        });
-        builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
-        builder.Logging.AddFilter("System.Net.Http", LogLevel.Warning);
-        builder.Logging.AddFilter("Microsoft.Extensions.Http", LogLevel.Warning);
-        builder.Logging.AddFilter("ReliaPay", LogLevel.Information);
+        ReliaPayLogging.ConfigureJsonConsole(builder.Logging);
         builder.Services.AddSingleton(new ReliaPayTraceOptions
         {
             ServiceName = serviceName,
@@ -69,7 +59,7 @@ public static class ReliaPayTracingExtensions
     }
 
     /// <summary>
-    /// Ставит middleware трассировки первым, чтобы scope покрывал ошибки и прокси.
+    /// Ставит middleware трассировки раньше, чтобы scope покрывал ошибки и прокси.
     /// </summary>
     /// <param name="app">Конвейер ASP.NET Core.</param>
     /// <returns>Тот же конвейер.</returns>
@@ -80,7 +70,7 @@ public static class ReliaPayTracingExtensions
     }
 
     /// <summary>
-    /// Стирает случайно попавшие секретные теги, если инструментация их добавила.
+    /// Стирает случайно попавшие секретные теги, если инструментарий их добавил.
     /// </summary>
     private static void RedactSensitiveActivityTags(Activity activity)
     {

@@ -1,7 +1,9 @@
 using System.Runtime.InteropServices;
+using Microsoft.Extensions.Logging;
 using ReliaPay.Data;
 using ReliaPay.Execution;
 using ReliaPay.Json;
+using ReliaPay.Observability;
 
 namespace ReliaPay.Worker;
 
@@ -11,10 +13,10 @@ namespace ReliaPay.Worker;
 public sealed class Program
 {
     /// <summary>
-    /// Читает окружение и крутит claim до SIGTERM.
+    /// Ждёт уведомления о claim до SIGTERM.
     /// </summary>
-    /// <param name="args">Аргументы процесса; worker их не использует.</param>
-    /// <returns>Код процесса.</returns>
+    /// <param name="args">Аргументы командной строки; worker их не использует.</param>
+    /// <returns>Код выхода.</returns>
     public static async Task<int> Main(string[] args)
     {
         _ = args;
@@ -31,6 +33,9 @@ public sealed class Program
             shutdown.Cancel();
         };
 
+        using ILoggerFactory loggerFactory = LoggerFactory.Create(ReliaPayLogging.ConfigureJsonConsole);
+        ILogger<WorkflowWorker> logger = loggerFactory.CreateLogger<WorkflowWorker>();
+
         try
         {
             WorkerSettings settings = WorkerSettings.FromEnvironment();
@@ -39,7 +44,7 @@ public sealed class Program
             ActionExecutor executor = new(connections, validator);
             WorkflowWorkerStore store = new(connections);
             WorkerFailpoint failpoint = new(settings.Failpoint, Console.Out);
-            WorkflowWorker worker = new(settings, store, executor, validator, failpoint);
+            WorkflowWorker worker = new(settings, store, executor, validator, failpoint, logger);
             await using ObservabilityHost obs = new(connections);
             obs.Start();
             await worker.RunAsync(shutdown.Token).ConfigureAwait(false);
@@ -51,6 +56,7 @@ public sealed class Program
         }
         catch (InvalidOperationException exception)
         {
+            logger.LogError("Worker failed to start: {errorCode}", "startup.invalid");
             await Console.Error.WriteLineAsync(exception.Message).ConfigureAwait(false);
             return 1;
         }

@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import logging
 import signal
 import time
 
 import psycopg
 
 from perimeter.config import ConfigError, ReconcilerConfig
+from perimeter import jsonlog
 from perimeter.obshttp import pg_ready, start_obs_server
 
 _STOP = False
+_LOG = logging.getLogger("inbox-reconciler")
 
 
 def _handle_stop(signum: int, _frame: object) -> None:
@@ -30,6 +33,7 @@ def run() -> None:
             port=8080,
             ready_check=lambda: pg_ready(connection),
         )
+        jsonlog.info(_LOG, "reconciler started", service="inbox-reconciler", status="live")
         try:
             while not _STOP:
                 with connection.cursor() as cursor:

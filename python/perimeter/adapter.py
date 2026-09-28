@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import signal
 import threading
 from dataclasses import dataclass
@@ -8,6 +9,7 @@ from typing import Callable
 from urllib.parse import urlsplit
 
 from perimeter.config import AdapterConfig, ConfigError
+from perimeter import jsonlog
 from perimeter.obshttp import gateway_live_url_from_receipt_api, probe_http_live
 from perimeter.crypto import sign_body_v1
 from perimeter.httpclient import TransportError, post_bytes
@@ -16,6 +18,7 @@ from perimeter.mapping import compact_receipt_bytes, map_legacy_to_receipt
 
 PostReceipt = Callable[[str, bytes, dict[str, str], float], tuple[int, bytes, str | None]]
 _MAX_BODY = 64 * 1024
+_LOG = logging.getLogger("receipt-adapter")
 _DEPENDENCY = b'{"status":"error","code":"dependency.unavailable"}'
 
 
@@ -48,6 +51,8 @@ def handle_callback(
     except LegacyCallbackError:
         return AdapterResponse(400, b"", None)
     receipt = map_legacy_to_receipt(legacy)
+    # messageId безопасен для лога; тело receipt и HMAC не пишем.
+    external_request_id = str(receipt.get("messageId") or "")
     payload = compact_receipt_bytes(receipt)
     headers = {
         "Content-Type": "application/json",
@@ -64,7 +69,22 @@ def handle_callback(
             api_timeout_sec,
         )
     except (TimeoutError, TransportError, OSError, ConnectionError):
+        jsonlog.info(
+            _LOG,
+            "provider callback forward failed",
+            service="receipt-adapter",
+            status="dependency.unavailable",
+            externalRequestId=external_request_id,
+            errorCode="dependency.unavailable",
+        )
         return AdapterResponse(503, _DEPENDENCY, "application/json")
+    jsonlog.info(
+        _LOG,
+        "provider callback forwarded",
+        service="receipt-adapter",
+        status=str(status),
+        externalRequestId=external_request_id,
+    )
     return AdapterResponse(status, response_body, media)
 
 
@@ -83,6 +103,7 @@ def run() -> None:
         cfg = AdapterConfig.from_env()
     except ConfigError as error:
         raise SystemExit(str(error)) from error
+    jsonlog.info(_LOG, "adapter started", service="receipt-adapter", status="live")
 
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self) -> None:  # noqa: N802

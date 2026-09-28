@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 namespace ReliaPay.Observability;
 
 /// <summary>
-/// Middleware трассировки: correlationId, logger scope, Activity tags. Не читает и не пишет тело запроса.
+/// Middleware трассировки: correlationId, logger scope, Activity tags. Не читает и не логирует тело запроса.
 /// </summary>
 public sealed class ReliaPayTraceMiddleware
 {
@@ -14,10 +14,10 @@ public sealed class ReliaPayTraceMiddleware
     private readonly ReliaPayTraceOptions _options;
 
     /// <summary>
-    /// Создаёт middleware поверх следующего звена конвейера.
+    /// Создаёт middleware вокруг следующего звена конвейера.
     /// </summary>
     /// <param name="next">Следующий делегат.</param>
-    /// <param name="logger">Журнал без секретов: только метод, маршрут и статус.</param>
+    /// <param name="logger">Журнал без секретов: только метод, маршрут и статусы.</param>
     /// <param name="options">Кто mintит correlationId.</param>
     public ReliaPayTraceMiddleware(
         RequestDelegate next,
@@ -33,7 +33,7 @@ public sealed class ReliaPayTraceMiddleware
     }
 
     /// <summary>
-    /// Health-проверки не трассируем, чтобы пробы Compose не забивали журнал.
+    /// Health-проверки не инструментируем, чтобы пробы Compose не засоряли журнал.
     /// </summary>
     /// <param name="path">Путь запроса.</param>
     /// <returns>Истина для <c>/health/*</c>.</returns>
@@ -43,7 +43,7 @@ public sealed class ReliaPayTraceMiddleware
     }
 
     /// <summary>
-    /// Собирает след, открывает Activity и scope, затем вызывает следующий middleware.
+    /// Собирает след, навешивает Activity и scope, затем вызывает следующий middleware.
     /// </summary>
     /// <param name="context">Текущий HTTP-контекст.</param>
     /// <returns>Задача завершения запроса.</returns>
@@ -67,29 +67,25 @@ public sealed class ReliaPayTraceMiddleware
         ReliaPayActivity.ApplyTags(Activity.Current, trace);
         using Activity? activity = ReliaPayInstrumentation.ActivitySource.StartActivity("http.request");
         ReliaPayActivity.ApplyTags(activity, trace);
-        using IDisposable? scope = _logger.BeginScope(
-            "correlationId:{correlationId} requestId:{requestId} module:{module} action:{action}",
-            trace.CorrelationId,
-            trace.RequestId ?? "-",
-            trace.Module ?? "-",
-            trace.Action ?? "-");
+        using IDisposable? scope = _logger.BeginScope(ReliaPayLogging.ToScope(trace));
+        long started = Stopwatch.GetTimestamp();
         _logger.LogInformation(
-            "HTTP {httpMethod} {httpRoute} started correlationId={correlationId}",
+            "HTTP {httpMethod} {httpRoute} started",
             context.Request.Method,
-            trace.Route,
-            trace.CorrelationId);
+            trace.Route);
         try
         {
             await _next(context).ConfigureAwait(false);
         }
         finally
         {
+            double durationMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             _logger.LogInformation(
-                "HTTP {httpMethod} {httpRoute} -> {statusCode} correlationId={correlationId}",
+                "HTTP {httpMethod} {httpRoute} completed status={statusCode} durationMs={durationMs}",
                 context.Request.Method,
                 trace.Route,
                 context.Response.StatusCode,
-                trace.CorrelationId);
+                Math.Round(durationMs, 3));
         }
     }
 }
