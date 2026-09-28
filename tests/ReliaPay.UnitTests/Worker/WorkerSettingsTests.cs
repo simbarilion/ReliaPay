@@ -16,6 +16,14 @@ public sealed class WorkerSettingsTests
     }
 
     [Fact]
+    public void Production_profile_ignores_failpoint_name()
+    {
+        WorkerSettings settings = WorkerSettings.Create("worker-a", "0", "after_job_claim");
+        settings.Failpoint.Should().BeNull();
+        settings.PollInterval.Should().Be(TimeSpan.FromMilliseconds(500));
+    }
+
+    [Fact]
     public void Missing_instance_id_is_rejected()
     {
         FluentActions.Invoking(() => WorkerSettings.Create("  ", null, null))
