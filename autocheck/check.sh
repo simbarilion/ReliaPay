@@ -52,5 +52,5 @@ exec python3 "$script_dir/public_check.py" \
   "${forwarded[@]}" \
   --repo "$repo_dir" \
   --fixtures "$script_dir/fixtures" \
-  --output "$repo_dir/week-3-public-report.json" \
+  --output "$repo_dir/week-4-public-report.json" \
   --compose-wrapper "$script_dir/safe_compose.sh"

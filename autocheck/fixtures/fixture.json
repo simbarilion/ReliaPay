@@ -1,7 +1,7 @@
 {
   "contractVersion": "course-1",
-  "generatorVersion": "week-3.1",
-  "digest": "1f83c074ea60ae3941f75dd48e1526030ebdd5e467a66753e1c6a1c06c67c059",
+  "generatorVersion": "week-4.1",
+  "digest": "f6900512f66ea58afe7fe6b739ac02a433573080a7cc6134e8fed4abfec44813",
   "provider": {
     "image": "ghcr.io/fintech-dev-lab/internship-provider-simulator:v0.2.0@sha256:70e5e0dd9ab8425be84de431ec74516f9bedf5d5529077358e2e2b2037fe0c74",
     "callbackPath": "/callbacks/provider-v02/{capability}"
@@ -14,8 +14,10 @@
     "worker-a",
     "worker-b",
     "outbox-dispatcher",
+    "outbox-dispatcher-b",
     "receipt-adapter",
     "inbox-reconciler",
+    "inbox-reconciler-b",
     "provider-simulator"
   ],
   "files": {

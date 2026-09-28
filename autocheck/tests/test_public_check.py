@@ -16,7 +16,7 @@ from unittest import mock
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "public_check.py"
-SPEC = importlib.util.spec_from_file_location("week3_public_check", MODULE_PATH)
+SPEC = importlib.util.spec_from_file_location("week4_public_check", MODULE_PATH)
 if SPEC is None or SPEC.loader is None:
     raise RuntimeError("Cannot load public_check.py")
 public_check = importlib.util.module_from_spec(SPEC)
@@ -25,6 +25,22 @@ SPEC.loader.exec_module(public_check)
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 PACKAGE = Path(__file__).resolve().parents[2]
+
+
+class PackagingTests(unittest.TestCase):
+    def test_documented_shell_entrypoints_are_executable(self) -> None:
+        names = ("check.sh", "autocheck/check.sh", "autocheck/safe_compose.sh")
+        result = subprocess.run(
+            ["git", "ls-files", "--stage", "--error-unmatch", "--", *names],
+            cwd=PACKAGE, capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0:
+            rows = result.stdout.splitlines()
+            self.assertEqual(len(rows), len(names))
+            self.assertTrue(all(row.split()[0] == "100755" for row in rows), rows)
+        else:
+            for name in names:
+                self.assertTrue((PACKAGE / name).stat().st_mode & 0o111, name)
 
 
 class FixtureTests(unittest.TestCase):
@@ -149,21 +165,46 @@ class ReceiptContractTests(unittest.TestCase):
 class ComposeAdmissionTests(unittest.TestCase):
     def _safe_config(self, repo: Path) -> dict[str, object]:
         python_image = "candidate/python-integration:local"
-        return {
+        config = {
             "services": {
                 "gateway": {
                     "build": {"context": str(repo)},
-                    "ports": [{"published": "8080", "target": 8080}],
+                    "ports": [
+                        {
+                            "host_ip": "127.0.0.1",
+                            "published": "8080",
+                            "target": 8080,
+                        }
+                    ],
                 },
                 "api": {"build": {"context": str(repo)}},
                 "cli": {"image": "candidate/api:local"},
-                "postgres": {"image": "postgres:16"},
+                "postgres": {
+                    "image": "postgres:16",
+                    "volumes": [
+                        {
+                            "type": "volume",
+                            "source": "data",
+                            "target": "/var/lib/postgresql/data",
+                        }
+                    ],
+                },
                 "worker-a": {"build": {"context": str(repo)}},
                 "worker-b": {"image": "candidate/worker:local"},
                 "outbox-dispatcher": {
                     "image": python_image,
                     "build": {"context": str(repo)},
-                    "environment": {"PGUSER": "outbox_dispatcher"},
+                    "environment": {
+                        "PGUSER": "outbox_dispatcher",
+                        "OUTBOX_OWNER": "outbox-dispatcher",
+                    },
+                },
+                "outbox-dispatcher-b": {
+                    "image": python_image,
+                    "environment": {
+                        "PGUSER": "outbox_dispatcher",
+                        "OUTBOX_OWNER": "outbox-dispatcher-b",
+                    },
                 },
                 "receipt-adapter": {
                     "image": python_image,
@@ -173,17 +214,37 @@ class ComposeAdmissionTests(unittest.TestCase):
                     "image": python_image,
                     "environment": {"PGUSER": "inbox_reconciler"},
                 },
+                "inbox-reconciler-b": {
+                    "image": python_image,
+                    "environment": {"PGUSER": "inbox_reconciler"},
+                },
                 "provider-simulator": {
                     "image": public_check.PROVIDER_IMAGE,
                     "environment": {
                         "CALLBACK_URL": (
                             "http://receipt-adapter:8082/callbacks/provider-v02/"
+                            "${PROVIDER_CALLBACK_CAPABILITY}"
                         )
                     },
                 },
             },
             "volumes": {"data": {}},
         }
+        services = config["services"]
+        services["api"].setdefault("environment", {})["CONNECTION_STRING"] = (
+            "Host=postgres;Database=course;Username=course_runtime;Password=test"
+        )
+        for service_name in ("worker-a", "worker-b"):
+            services[service_name].setdefault("environment", {})[
+                "CONNECTION_STRING"
+            ] = (
+                "Host=postgres;Database=course;Username=workflow_worker;Password=test"
+            )
+        for variable, recipients in public_check.REQUIRED_ENV_RECIPIENTS.items():
+            for service_name in recipients:
+                environment = services[service_name].setdefault("environment", {})
+                environment[f"SOURCE_{variable}"] = f"${{{variable}:-test}}"
+        return config
 
     def test_safe_compose_contract_is_accepted(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -214,7 +275,22 @@ class ComposeAdmissionTests(unittest.TestCase):
             runtime["services"]["gateway"]["ports"] = [
                 {"host_ip": "127.0.0.1", "published": "43123", "target": 8080}
             ]
-            self.assertEqual(public_check._runtime_compose_findings(runtime, 43123), [])
+            probe_ports = {
+                service: 44000 + index
+                for index, service in enumerate(public_check.INTERNAL_PORTS)
+            }
+            for service, port in probe_ports.items():
+                runtime["services"][service]["ports"] = [
+                    {
+                        "host_ip": "127.0.0.1",
+                        "published": str(port),
+                        "target": public_check.INTERNAL_PORTS[service],
+                    }
+                ]
+            self.assertEqual(
+                public_check._runtime_compose_findings(runtime, 43123, probe_ports),
+                [],
+            )
             self.assertTrue(public_check._compose_contract_findings(runtime, repo))
 
     def test_candidate_config_forces_contract_port_before_runtime_override(self) -> None:
@@ -332,6 +408,18 @@ class ComposeAdmissionTests(unittest.TestCase):
                 )
             )
 
+    def test_dispatcher_owners_must_be_distinct(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary)
+            config = self._safe_config(repo)
+            services = config["services"]
+            assert isinstance(services, dict)
+            services["outbox-dispatcher-b"]["environment"]["OUTBOX_OWNER"] = (
+                "outbox-dispatcher"
+            )
+            findings = public_check._compose_contract_findings(config, repo)
+            self.assertTrue(any("distinct published owners" in item for item in findings))
+
     def test_adapter_connection_timeout_is_not_database_configuration(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repo = Path(temporary)
@@ -357,6 +445,16 @@ class ComposeAdmissionTests(unittest.TestCase):
             self.assertTrue(
                 any("PostgreSQL configuration" in item for item in findings)
             )
+
+    def test_libpq_dsn_principal_is_detected(self) -> None:
+        environment = {
+            "DATABASE_DSN": (
+                "host=postgres dbname=course user=outbox_dispatcher password=secret"
+            )
+        }
+        self.assertEqual(
+            public_check._database_principals(environment), {"outbox_dispatcher"}
+        )
 
     def test_synthetic_secret_distribution_is_restricted(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -430,6 +528,59 @@ class ComposeAdmissionTests(unittest.TestCase):
             self.assertIn("bind mount", rendered)
             self.assertIn("Docker socket", rendered)
 
+    def test_docker_api_and_external_namespaces_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary)
+            config = self._safe_config(repo)
+            services = config["services"]
+            assert isinstance(services, dict)
+            services["api"]["use_api_socket"] = True
+            services["worker-a"]["network_mode"] = "container:trusted"
+            services["worker-b"]["pid"] = "container:trusted"
+            services["receipt-adapter"]["security_opt"] = ["seccomp=unconfined"]
+            rendered = "\n".join(
+                public_check._compose_contract_findings(config, repo)
+            )
+            self.assertIn("use_api_socket", rendered)
+            self.assertIn("network_mode", rendered)
+            self.assertIn("pid", rendered)
+            self.assertIn("security_opt", rendered)
+
+    def test_gateway_must_bind_loopback(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary)
+            config = self._safe_config(repo)
+            config["services"]["gateway"]["ports"][0]["host_ip"] = "0.0.0.0"
+            findings = public_check._compose_contract_findings(config, repo)
+            self.assertTrue(any("bind 127.0.0.1" in item for item in findings))
+
+    def test_postgres_requires_declared_named_volume(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary)
+            config = self._safe_config(repo)
+            config["services"]["postgres"]["volumes"] = []
+            findings = public_check._compose_contract_findings(config, repo)
+            self.assertTrue(any("declared named volume" in item for item in findings))
+
+    def test_tracked_environment_references_are_required(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary)
+            config = self._safe_config(repo)
+            environment = config["services"]["api"]["environment"]
+            environment.pop("SOURCE_COURSE_JWT_SIGNING_KEY")
+            reference_values = {
+                variable: (
+                    "8080" if variable == "COURSE_GATEWAY_PORT" else "${" + variable
+                )
+                for variable in public_check.REQUIRED_ENV_RECIPIENTS
+            }
+            findings = public_check._environment_reference_findings(
+                config, reference_values
+            )
+            self.assertTrue(
+                any("api" in item and "COURSE_JWT_SIGNING_KEY" in item for item in findings)
+            )
+
     def test_short_port_publication_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repo = Path(temporary)
@@ -440,7 +591,7 @@ class ComposeAdmissionTests(unittest.TestCase):
             findings = public_check._compose_contract_findings(config, repo)
             self.assertTrue(any("only gateway" in item for item in findings))
 
-    def test_callback_base_preserves_candidate_internal_port(self) -> None:
+    def test_callback_requires_published_internal_port_and_capability(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             config = self._safe_config(Path(temporary))
             services = config["services"]
@@ -448,10 +599,13 @@ class ComposeAdmissionTests(unittest.TestCase):
             services["provider-simulator"]["environment"]["CALLBACK_URL"] = (
                 "http://receipt-adapter:9123/callbacks/provider-v02/candidate"
             )
-            self.assertEqual(
-                public_check._provider_callback_base(config),
-                "http://receipt-adapter:9123/callbacks/provider-v02",
+            with self.assertRaises(public_check.ContractError):
+                public_check._provider_callback_base(config)
+            services["provider-simulator"]["environment"]["CALLBACK_URL"] = (
+                "http://receipt-adapter:8082/callbacks/provider-v02/"
             )
+            with self.assertRaises(public_check.ContractError):
+                public_check._provider_callback_base(config)
 
     def test_override_configures_all_csharp_application_services(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -459,8 +613,17 @@ class ComposeAdmissionTests(unittest.TestCase):
             checker = public_check.PublicChecker.__new__(public_check.PublicChecker)
             checker.override = root / "override.yaml"
             checker.project = "public-test"
-            checker.callback_base = "http://receipt-adapter:9123/callbacks/provider-v02"
-            checker._write_override(self._safe_config(root))
+            checker.callback_base = "http://receipt-adapter:8082/callbacks/provider-v02"
+            checker.probe_ports = {
+                service: 44000 + index
+                for index, service in enumerate(public_check.INTERNAL_PORTS)
+            }
+            config = self._safe_config(root)
+            config["services"]["migration-helper"] = {
+                "image": "candidate/migration-helper:local",
+                "build": {"context": str(root)},
+            }
+            checker._write_override(config)
             rendered = checker.override.read_text(encoding="utf-8")
             for service in ("gateway", "api", "cli", "worker-a", "worker-b"):
                 remainder = rendered.split(f"  {service}:\n", 1)[1]
@@ -475,12 +638,16 @@ class ComposeAdmissionTests(unittest.TestCase):
                 self.assertIn("COURSE_JWT_SIGNING_KEY", section)
                 self.assertIn("COURSE_TEST_PROFILE", section)
             self.assertIn(
-                "http://receipt-adapter:9123/callbacks/provider-v02/"
+                "http://receipt-adapter:8082/callbacks/provider-v02/"
                 "${PROVIDER_CALLBACK_CAPABILITY}",
                 rendered,
             )
+            self.assertNotIn("candidate/python-integration:local", rendered)
+            self.assertNotIn("candidate/migration-helper:local", rendered)
+            self.assertIn("  migration-helper:\n", rendered)
+            self.assertTrue(checker.isolated_images)
 
-    def test_internal_http_probe_script_is_valid_python(self) -> None:
+    def test_internal_http_uses_checker_owned_loopback_transport(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             harness = public_check.ComposeHarness(
@@ -492,25 +659,28 @@ class ComposeAdmissionTests(unittest.TestCase):
                 gateway_port=8080,
                 environment={},
                 sensitive=(),
+                probe_ports={"receipt-adapter": 43123},
             )
-            response = public_check.CommandResult(
-                ("compose",),
-                0,
-                '{"status":204,"data":"","headers":{}}\n',
-                "",
-            )
+            response = mock.MagicMock()
+            response.status = 204
+            response.read.return_value = b""
+            response.headers.items.return_value = []
+            response.__enter__.return_value = response
             with mock.patch.object(
-                harness, "compose", return_value=response
-            ) as compose:
+                harness.http_opener, "open", return_value=response
+            ) as urlopen:
                 result = harness.internal_http(
                     "receipt-adapter",
                     "POST",
-                    "http://127.0.0.1:8082/callbacks/provider-v02/test",
+                    "http://receipt-adapter:8082/callbacks/provider-v02/test",
                     body={"value": True},
                 )
             self.assertEqual(result.status, 204)
-            script = compose.call_args.args[0][5]
-            compile(script, "<internal-http-probe>", "exec")
+            request = urlopen.call_args.args[0]
+            self.assertEqual(
+                request.full_url,
+                "http://127.0.0.1:43123/callbacks/provider-v02/test",
+            )
 
     def test_python_runtime_detection_accepts_312(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -570,6 +740,42 @@ class ComposeAdmissionTests(unittest.TestCase):
                 self.assertRaises(public_check.ContractError),
             ):
                 harness.detect_python_runtime("receipt-adapter")
+
+    def test_python_runtime_detection_accepts_console_entrypoint(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            harness = public_check.ComposeHarness(
+                repo=root,
+                compose_file=root / "compose.yaml",
+                override_file=root / "override.yaml",
+                wrapper=root / "wrapper.sh",
+                project="project",
+                gateway_port=8080,
+                environment={},
+                sensitive=(),
+            )
+            process = public_check.CommandResult(
+                ("docker", "inspect"), 0, "gunicorn\n", ""
+            )
+            pid = public_check.CommandResult(("docker", "inspect"), 0, "100\n", "")
+            top = public_check.CommandResult(
+                ("docker", "top"),
+                0,
+                "PID PPID COMMAND\n100 1 gunicorn\n",
+                "",
+            )
+            version = public_check.CommandResult(
+                ("docker", "exec"), 0, "Python 3.12.8\n", ""
+            )
+            with (
+                mock.patch.object(harness, "container_id", return_value="a" * 64),
+                mock.patch.object(
+                    harness, "run", side_effect=[process, pid, top, version]
+                ) as run,
+            ):
+                actual = harness.detect_python_runtime("receipt-adapter")
+            self.assertEqual(actual, (3, 12, 8))
+            self.assertEqual(run.call_args.args[0][-2:], ("/proc/1/exe", "--version"))
 
     def test_main_process_detection_accepts_init_wrapper(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -643,10 +849,37 @@ class ComposeAdmissionTests(unittest.TestCase):
             )
             error = public_check.urllib.error.URLError("connection refused")
             with mock.patch.object(
-                public_check.urllib.request, "urlopen", side_effect=error
+                harness.http_opener, "open", side_effect=error
             ):
                 with self.assertRaises(public_check.ContractError):
                     harness.http("GET", "/health/ready")
+
+    def test_trusted_http_transport_disables_redirects_and_proxies(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            harness = public_check.ComposeHarness(
+                repo=root,
+                compose_file=root / "compose.yaml",
+                override_file=root / "override.yaml",
+                wrapper=root / "wrapper.sh",
+                project="project",
+                gateway_port=8080,
+                environment={},
+                sensitive=(),
+            )
+            handlers = harness.http_opener.handlers
+            self.assertTrue(
+                any(
+                    isinstance(handler, public_check.NoRedirectHandler)
+                    for handler in handlers
+                )
+            )
+            proxy_handlers = [
+                handler
+                for handler in handlers
+                if isinstance(handler, public_check.urllib.request.ProxyHandler)
+            ]
+            self.assertEqual(proxy_handlers, [])
 
 
 class PollingTests(unittest.TestCase):
@@ -670,6 +903,148 @@ class PollingTests(unittest.TestCase):
             )
 
 
+class OpenMetricsTests(unittest.TestCase):
+    def test_standard_counter_family_passes_endpoint_checks(self) -> None:
+        document = (
+            "# TYPE workflow_jobs_ready gauge\nworkflow_jobs_ready 0\n"
+            "# TYPE workflow_job_oldest_age_seconds gauge\nworkflow_job_oldest_age_seconds 0\n"
+            "# TYPE workflow_processes_waiting gauge\nworkflow_processes_waiting 0\n"
+            "# TYPE outbox_pending gauge\noutbox_pending 0\n"
+            "# TYPE outbox_oldest_age_seconds gauge\noutbox_oldest_age_seconds 0\n"
+            "# TYPE workflow_failures counter\nworkflow_failures_total 0\n# EOF\n"
+        )
+        checker = object.__new__(public_check.PublicChecker)
+        checker.checks = []
+        checker.sensitive = ()
+
+        def response(service, path):
+            if path == "/metrics":
+                return public_check.HttpResult(200, document.encode(), {
+                    "Content-Type": "application/openmetrics-text; version=1.0.0; charset=utf-8",
+                })
+            status = "live" if path.endswith("/live") else "ready"
+            return public_check.HttpResult(200, json.dumps({"status": status}).encode(), {
+                "Content-Type": "application/json",
+            })
+
+        with mock.patch.object(checker, "_service_http", side_effect=response):
+            checker._check_observability_endpoints()
+        self.assertTrue(all(check["status"] == "passed" for check in checker.checks))
+
+    def test_eof_without_final_newline_is_valid_but_crlf_is_not(self) -> None:
+        samples, _, _ = public_check.parse_openmetrics("outbox_pending 0\n# EOF")
+        self.assertEqual(samples, {"outbox_pending": [0.0]})
+        for document in ("outbox_pending 0\r\n# EOF\n", "outbox_pending 0\n# EOF extra\n"):
+            with self.subTest(document=document), self.assertRaises(ValueError):
+                public_check.parse_openmetrics(document)
+
+    def test_required_series_and_labels_are_parsed(self) -> None:
+        document = (
+            "# TYPE outbox_pending gauge\n"
+            'outbox_pending{state="RETRY_WAIT"} 2\n'
+            "workflow_failures_total 0\n"
+            "# EOF\n"
+        )
+        samples, labels, metric_types = public_check.parse_openmetrics(document)
+        self.assertEqual(samples["outbox_pending"], [2.0])
+        self.assertEqual(samples["workflow_failures_total"], [0.0])
+        self.assertEqual(labels, {"state": {"RETRY_WAIT"}})
+        self.assertEqual(
+            metric_types,
+            {"outbox_pending": "gauge"},
+        )
+
+    def test_missing_eof_and_invalid_sample_are_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            public_check.parse_openmetrics("outbox_pending 1\n")
+        with self.assertRaises(ValueError):
+            public_check.parse_openmetrics("outbox_pending nope\n# EOF\n")
+
+    def test_exemplars_are_accepted_and_malformed_labels_are_rejected(self) -> None:
+        document = (
+            'workflow_failures_total{code="action.failed"} 1 '
+            '# {trace_id="abc123"} 1.0 1750000000\n# EOF\n'
+        )
+        samples, labels, metric_types = public_check.parse_openmetrics(document)
+        self.assertEqual(samples["workflow_failures_total"], [1.0])
+        self.assertEqual(labels, {"code": {"action.failed"}})
+        self.assertEqual(metric_types, {})
+        with self.assertRaises(ValueError):
+            public_check.parse_openmetrics(
+                'workflow_failures_total{valid="yes" broken="no"} 1\n# EOF\n'
+            )
+
+    def test_high_cardinality_label_set_is_complete(self) -> None:
+        for label in ("operation_id", "processId", "external_request_id"):
+            self.assertIn(label, public_check.FORBIDDEN_METRIC_LABELS)
+
+    def test_identifier_like_metric_label_values_are_rejected(self) -> None:
+        labels = {
+            "state": {"READY"},
+            "id": {"00000000-0000-4000-8000-000000000001"},
+        }
+        self.assertEqual(
+            public_check._unbounded_metric_label_findings(labels),
+            ["id: identifier-like or oversized value"],
+        )
+
+
+class OutageRecoveryTests(unittest.TestCase):
+    def row(self, state="RETRY_WAIT", attempts=1, code="transport.error.retryable"):
+        return [{"state": state, "attempt_count": attempts, "last_error_code": code}]
+
+    def test_checker_missing_last_retry_is_infrastructure_failure(self) -> None:
+        for state in ("RETRY_WAIT", "LEASED", "DEAD"):
+            with self.subTest(state=state), self.assertRaises(public_check.EnvironmentFailure):
+                public_check.PublicChecker._require_recovery_window(self.row(state, 4))
+        with self.assertRaises(public_check.EnvironmentFailure):
+            public_check.PublicChecker._require_recovery_window(self.row("LEASED", 3, None))
+
+    def test_invalid_retry_policy_is_still_a_contract_failure(self) -> None:
+        for rows in ([], self.row("DEAD", 1), self.row(attempts=5), self.row(code="http.400.terminal")):
+            with self.subTest(rows=rows), self.assertRaises(public_check.ContractError):
+                public_check.PublicChecker._require_recovery_window(rows)
+
+    def test_remaining_attempt_allows_recovery(self) -> None:
+        public_check.PublicChecker._require_recovery_window(self.row(attempts=3))
+        public_check.PublicChecker._require_recovery_window(self.row("LEASED", 2, None))
+
+    def test_dispatcher_startup_allows_transient_connection_failure(self) -> None:
+        checker = object.__new__(public_check.PublicChecker)
+        with (
+            mock.patch.object(checker, "_service_is_ready", side_effect=[
+                public_check.ContractError("connection refused"), False, True,
+            ]) as ready,
+            mock.patch.object(public_check.time, "sleep"),
+        ):
+            checker._wait_service_ready("outbox-dispatcher")
+        self.assertEqual(ready.call_count, 3)
+
+    def test_outage_does_not_restart_provider_as_dependency_and_unpauses_on_error(self) -> None:
+        checker = object.__new__(public_check.PublicChecker)
+        checker.harness = mock.Mock()
+        checker.harness.psql_rows.return_value = self.row("DEAD", 4)
+        checker.checks = []
+        checker.sensitive = ()
+        with (
+            mock.patch.object(checker, "_service_is_ready", return_value=True),
+            mock.patch.object(checker, "_create_and_submit", return_value=("op", "process")),
+            mock.patch.object(checker, "_external_request", return_value=[{"external_request_id": "external-1"}]),
+            mock.patch.object(checker, "_read_metrics", return_value=({"outbox_pending": [1]}, {}, {})),
+            mock.patch.object(checker, "_poll_rows", return_value=self.row()),
+            self.assertRaises(public_check.EnvironmentFailure),
+        ):
+            checker._check_provider_outage_recovery()
+        calls = checker.harness.compose.call_args_list
+        for call in calls:
+            args = call.args[0]
+            if args[0] == "up":
+                self.assertIn("--no-deps", args)
+        self.assertIn(mock.call(("pause", "outbox-dispatcher"), timeout=30), calls)
+        self.assertEqual(calls[-1], mock.call(("unpause", "outbox-dispatcher"), timeout=30))
+        self.assertTrue(all(check["status"] == "passed" for check in checker.checks))
+
+
 class ActionResultTests(unittest.TestCase):
     def test_repeat_ignores_transport_meta_but_not_business_result(self) -> None:
         first = {
@@ -684,11 +1059,159 @@ class ActionResultTests(unittest.TestCase):
         self.assertFalse(public_check.same_action_result(first, changed))
 
 
+class ResultSchemaTests(unittest.TestCase):
+    def test_payment_submit_result_requires_full_contract(self) -> None:
+        schema = json.loads(
+            (PACKAGE / "contracts/course-1/payment-submit.result.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        valid = {
+            "operationId": "00000000-0000-4000-8000-000000000001",
+            "processId": "00000000-0000-4000-8000-000000000002",
+            "flowName": "payment-processing",
+            "flowVersion": 1,
+            "status": "PROCESSING",
+        }
+        self.assertEqual(public_check.validate_json_schema(valid, schema), [])
+        invalid = dict(valid)
+        invalid.pop("flowName")
+        self.assertTrue(public_check.validate_json_schema(invalid, schema))
+
+    def test_trace_result_rejects_additional_properties(self) -> None:
+        schema = json.loads(
+            (
+                PACKAGE
+                / "contracts/course-1/diagnostics-trace.result.schema.json"
+            ).read_text(encoding="utf-8")
+        )
+        self.assertTrue(
+            public_check.validate_json_schema(
+                {"query": {"identifier": "x", "matchedBy": ["operationId"]}},
+                schema,
+            )
+        )
+
+
+class StalledContractTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.schema = json.loads(
+            (PACKAGE / "contracts/course-1/diagnostics-stalled.result.schema.json").read_text()
+        )
+        self.item = {
+            "operationId": "00000000-0000-4000-8000-000000000001",
+            "processId": "00000000-0000-4000-8000-000000000002",
+            "externalRequestId": "external-example",
+        }
+
+    @staticmethod
+    def response(status, body):
+        return public_check.HttpResult(status, json.dumps(body).encode(), {"Content-Type": "application/json"})
+
+    def checker(self, items):
+        checker = object.__new__(public_check.PublicChecker)
+        checker.harness = mock.Mock()
+        checker.harness.psql_rows.return_value = [{
+            "version": 1, "http_method": "POST", "outcomes": ["FOUND"],
+            "enabled": True, "is_default": True,
+        }]
+        checker.harness.action.side_effect = [
+            self.response(200, {"status": "ok", "outcome": "FOUND", "result": {"items": items}, "meta": {"correlationId": "request-example"}}),
+            self.response(401, {"status": "error", "code": "auth.invalid"}),
+            self.response(403, {"status": "error", "code": "auth.forbidden"}),
+            self.response(422, {"status": "error", "code": "payload.invalid"}),
+        ]
+        checker.harness.http.return_value = self.response(401, {"status": "error", "code": "auth.required"})
+        checker.result_schemas = {"diagnostics-stalled.result.schema.json": self.schema}
+        checker.diagnostics_token = "reader-token"
+        checker.client_token = "client-token"
+        checker.checks = []
+        checker.sensitive = ()
+        checker._restart_snapshot = mock.Mock(side_effect=[
+            {"operations": [{"status": "COMPLETED"}], "action_dispatches": []},
+            {"operations": [{"status": "COMPLETED"}], "action_dispatches": [{"action": "stalled"}]},
+        ])
+        return checker
+
+    def test_payload_is_an_empty_object(self) -> None:
+        schema = json.loads(
+            (PACKAGE / "contracts/course-1/diagnostics-stalled.payload.schema.json").read_text()
+        )
+        self.assertEqual(public_check.validate_json_schema({}, schema), [])
+        for payload in (None, [], {"unexpected": True}):
+            with self.subTest(payload=payload):
+                self.assertTrue(public_check.validate_json_schema(payload, schema))
+
+    def test_empty_and_nonempty_results_pass(self) -> None:
+        for items in ([], [self.item]):
+            with self.subTest(items=items):
+                checker = self.checker(items)
+                checker._check_stalled([self.item["operationId"]])
+                self.assertEqual(len(checker.checks), 8)
+                self.assertTrue(all(check["status"] == "passed" for check in checker.checks))
+                headers = checker.harness.http.call_args.kwargs["headers"]
+                self.assertNotIn("Authorization", headers)
+
+    def test_result_schema_rejects_extra_fields_and_invalid_identifiers(self) -> None:
+        for result in (
+            {}, {"items": [], "extra": 1}, {"items": None},
+            {"items": [{**self.item, "payload": {}}]},
+            {"items": [{**self.item, "operationId": "invalid"}]},
+            {"items": [{**self.item, "processId": None}]},
+            {"items": [{**self.item, "externalRequestId": "line\nbreak"}]},
+        ):
+            with self.subTest(result=result):
+                self.assertTrue(public_check.validate_json_schema(result, self.schema))
+
+    def test_repeated_operation_and_wrong_order_fail(self) -> None:
+        second = {**self.item, "operationId": "00000000-0000-4000-8000-000000000003"}
+        for items in (
+            [self.item, self.item],
+            [self.item, {**self.item, "externalRequestId": "other-request"}],
+            [second, self.item],
+        ):
+            with self.subTest(items=items), self.assertRaises(public_check.ContractError):
+                self.checker(items)._check_stalled([self.item["operationId"]])
+
+    def test_success_for_unauthorized_request_fails(self) -> None:
+        checker = self.checker([])
+        checker.harness.http.return_value = self.response(200, {"status": "ok"})
+        with self.assertRaisesRegex(public_check.ContractError, "stalled-no-token"):
+            checker._check_stalled([self.item["operationId"]])
+
+    def test_success_without_policy_fails(self) -> None:
+        checker = self.checker([])
+        responses = list(checker.harness.action.side_effect)
+        responses[2] = self.response(200, {"status": "ok"})
+        checker.harness.action.side_effect = responses
+        with self.assertRaisesRegex(public_check.ContractError, "stalled-missing-policy"):
+            checker._check_stalled([self.item["operationId"]])
+
+    def test_missing_registration_fails(self) -> None:
+        checker = self.checker([])
+        checker.harness.psql_rows.return_value = []
+        with self.assertRaisesRegex(public_check.ContractError, "stalled-registered-action"):
+            checker._check_stalled([self.item["operationId"]])
+
+    def test_business_mutation_fails(self) -> None:
+        checker = self.checker([])
+        checker._restart_snapshot.side_effect = [
+            {"operations": [{"status": "COMPLETED"}]},
+            {"operations": [{"status": "REJECTED"}]},
+        ]
+        with self.assertRaisesRegex(public_check.ContractError, "stalled-preserves-business-evidence"):
+            checker._check_stalled([self.item["operationId"]])
+
+
 class ProjectionContractTests(unittest.TestCase):
     def test_published_column_types_are_explicit(self) -> None:
         self.assertEqual(public_check._expected_column_type("process_id"), "uuid")
         self.assertEqual(
             public_check._expected_column_type("received_at"),
+            "timestamp with time zone",
+        )
+        self.assertEqual(
+            public_check._expected_column_type("dead_at"),
             "timestamp with time zone",
         )
         self.assertEqual(public_check._expected_column_type("lease_version"), "bigint")
@@ -703,15 +1226,29 @@ class MachineArtifactTests(unittest.TestCase):
                 value = json.loads(path.read_text(encoding="utf-8"))
                 self.assertIsInstance(value, dict)
 
-    def test_score_manifest_sums_to_25(self) -> None:
-        path = PACKAGE / "contracts" / "course-1" / "week-3-score-manifest.json"
+    def test_score_manifest_sums_to_30(self) -> None:
+        path = PACKAGE / "contracts" / "course-1" / "week-4-score-manifest.json"
         manifest = json.loads(path.read_text(encoding="utf-8"))
-        self.assertEqual(manifest["manifestVersion"], "week-3.1")
-        self.assertEqual(sum(item["weight"] for item in manifest["criteria"]), 25)
+        self.assertEqual(manifest["manifestVersion"], "week-4.1")
+        self.assertEqual(manifest["cumulativeMaximum"], 100)
+        self.assertEqual(sum(item["weight"] for item in manifest["criteria"]), 30)
         self.assertEqual(
             {item["id"] for item in manifest["criteria"]},
-            {"BNK-01", "BNK-02", "BNK-03", "BNK-04", "BNK-05", "PG-02", "PG-05"},
+            {
+                "PG-04",
+                "REL-01",
+                "REL-02",
+                "REL-03",
+                "REL-04",
+                "REL-05",
+                "OBS-01",
+                "OBS-02",
+                "OBS-03",
+                "OBS-04",
+                "OBS-05",
+            },
         )
+
     def test_published_schema_set_is_complete(self) -> None:
         names = [
             "payment-submit.payload.schema.json",
@@ -721,6 +1258,10 @@ class MachineArtifactTests(unittest.TestCase):
             "provider-v02-payment-request.schema.json",
             "provider-v02-callback.schema.json",
             "receipt-v1.schema.json",
+            "diagnostics-trace.payload.schema.json",
+            "diagnostics-trace.result.schema.json",
+            "diagnostics-stalled.payload.schema.json",
+            "diagnostics-stalled.result.schema.json",
         ]
         for name in names:
             with self.subTest(name=name):
@@ -732,6 +1273,17 @@ class MachineArtifactTests(unittest.TestCase):
                     ),
                     dict,
                 )
+
+    def test_both_baseline_workflow_maps_are_published(self) -> None:
+        contracts = PACKAGE / "contracts" / "course-1"
+        for name in (
+            "payment-processing-v1.flow.yaml",
+            "payment-review-v1.flow.yaml",
+        ):
+            with self.subTest(name=name):
+                text = (contracts / name).read_text(encoding="utf-8")
+                self.assertIn("contract_version: course-1", text)
+                self.assertIn("version: 1", text)
 
     def test_crlf_is_rejected_at_every_position(self) -> None:
         protected = {
@@ -791,8 +1343,16 @@ class WrapperTests(unittest.TestCase):
             "COURSE_POSTGRES_PASSWORD",
             "COURSE_OUTBOX_PASSWORD",
             "COURSE_INBOX_PASSWORD",
+            "COURSE_AUTOCHECK_PASSWORD",
             "PROVIDER_URL",
             "OUTBOX_OWNER",
+            "OUTBOX_OWNER_B",
+            "COURSE_PROVIDER_TIMEOUT_MS",
+            "COURSE_OUTBOX_MAX_ATTEMPTS",
+            "COURSE_OUTBOX_LEASE_MS",
+            "COURSE_JOB_LEASE_MS",
+            "COURSE_WORKER_POLL_MS",
+            "COURSE_FAILPOINT",
             "RECEIPT_API_URL",
         ):
             with self.subTest(name=name):

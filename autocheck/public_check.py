@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the published week-3 Python perimeter black-box checks."""
+"""Run the published week-4 reliability black-box checks."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import base64
 import datetime as dt
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 import re
@@ -26,12 +27,12 @@ from pathlib import Path
 from typing import Any, Callable, Sequence
 
 
-MANIFEST_VERSION = "week-3-public-report/v1"
-TOOL_VERSION = "week-3-public-check/0.3"
+MANIFEST_VERSION = "week-4-public-report/v1"
+TOOL_VERSION = "week-4-public-check/0.4"
 PUBLISHED_FIXTURE_DIGEST = (
-    "1f83c074ea60ae3941f75dd48e1526030ebdd5e467a66753e1c6a1c06c67c059"
+    "f6900512f66ea58afe7fe6b739ac02a433573080a7cc6134e8fed4abfec44813"
 )
-PUBLISHED_FIXTURE_GENERATOR = "week-3.1"
+PUBLISHED_FIXTURE_GENERATOR = "week-4.1"
 PROVIDER_IMAGE = (
     "ghcr.io/fintech-dev-lab/internship-provider-simulator:v0.2.0@"
     "sha256:70e5e0dd9ab8425be84de431ec74516f9bedf5d5529077358e2e2b2037fe0c74"
@@ -50,17 +51,139 @@ REQUIRED_SERVICES = {
     "worker-a",
     "worker-b",
     "outbox-dispatcher",
+    "outbox-dispatcher-b",
     "receipt-adapter",
     "inbox-reconciler",
+    "inbox-reconciler-b",
     "provider-simulator",
 }
 RUNNING_SERVICES = REQUIRED_SERVICES - {"cli"}
 PYTHON_SERVICES = (
     "outbox-dispatcher",
+    "outbox-dispatcher-b",
     "receipt-adapter",
     "inbox-reconciler",
+    "inbox-reconciler-b",
 )
 CSHARP_SERVICES = ("gateway", "api", "worker-a", "worker-b")
+OBSERVABILITY_ENDPOINTS = {
+    "api": "http://api:8080",
+    "worker-a": "http://worker-a:8080",
+    "worker-b": "http://worker-b:8080",
+    "outbox-dispatcher": "http://outbox-dispatcher:8080",
+    "outbox-dispatcher-b": "http://outbox-dispatcher-b:8080",
+    "receipt-adapter": "http://receipt-adapter:8082",
+    "inbox-reconciler": "http://inbox-reconciler:8080",
+    "inbox-reconciler-b": "http://inbox-reconciler-b:8080",
+}
+INTERNAL_PORTS = {
+    **{
+        service: int(urllib.parse.urlsplit(url).port or 80)
+        for service, url in OBSERVABILITY_ENDPOINTS.items()
+    },
+    "postgres": 5432,
+    "provider-simulator": 8081,
+}
+REQUIRED_METRICS = {
+    "workflow_jobs_ready",
+    "workflow_job_oldest_age_seconds",
+    "workflow_processes_waiting",
+    "outbox_pending",
+    "outbox_oldest_age_seconds",
+    "workflow_failures_total",
+}
+REQUIRED_METRIC_TYPES = {
+    "workflow_jobs_ready": "gauge",
+    "workflow_job_oldest_age_seconds": "gauge",
+    "workflow_processes_waiting": "gauge",
+    "outbox_pending": "gauge",
+    "outbox_oldest_age_seconds": "gauge",
+    "workflow_failures": "counter",
+}
+FORBIDDEN_METRIC_LABELS = {
+    "correlation_id",
+    "request_id",
+    "operation_id",
+    "process_id",
+    "step_instance_id",
+    "job_id",
+    "execution_id",
+    "attempt_id",
+    "outbox_id",
+    "external_request_id",
+    "message_id",
+    "decision_id",
+    "correlationId",
+    "requestId",
+    "operationId",
+    "processId",
+    "stepInstanceId",
+    "jobId",
+    "executionId",
+    "attemptId",
+    "outboxId",
+    "externalRequestId",
+    "messageId",
+    "decisionId",
+}
+REQUIRED_ENV_RECIPIENTS = {
+    "COURSE_GATEWAY_PORT": ("gateway",),
+    "COURSE_TEST_PROFILE": CSHARP_SERVICES + ("cli",) + PYTHON_SERVICES,
+    "COURSE_JWT_ISSUER": CSHARP_SERVICES + ("cli",),
+    "COURSE_JWT_AUDIENCE": CSHARP_SERVICES + ("cli",),
+    "COURSE_JWT_SIGNING_KEY": CSHARP_SERVICES + ("cli",),
+    "COURSE_POSTGRES_PASSWORD": ("postgres",),
+    "COURSE_MIGRATOR_PASSWORD": ("postgres", "cli"),
+    "COURSE_PUBLISHER_PASSWORD": ("postgres", "cli"),
+    "COURSE_RUNTIME_PASSWORD": ("postgres", "api"),
+    "COURSE_WORKER_PASSWORD": ("postgres", "worker-a", "worker-b"),
+    "COURSE_OUTBOX_PASSWORD": (
+        "postgres",
+        "outbox-dispatcher",
+        "outbox-dispatcher-b",
+    ),
+    "COURSE_INBOX_PASSWORD": (
+        "postgres",
+        "inbox-reconciler",
+        "inbox-reconciler-b",
+    ),
+    "COURSE_AUTOCHECK_PASSWORD": ("postgres",),
+    "PROVIDER_URL": ("outbox-dispatcher", "outbox-dispatcher-b"),
+    "OUTBOX_OWNER": ("outbox-dispatcher",),
+    "OUTBOX_OWNER_B": ("outbox-dispatcher-b",),
+    "COURSE_FAILPOINT": (
+        "api",
+        "worker-a",
+        "worker-b",
+        "outbox-dispatcher",
+        "outbox-dispatcher-b",
+        "inbox-reconciler",
+        "inbox-reconciler-b",
+    ),
+    "COURSE_PROVIDER_TIMEOUT_MS": ("outbox-dispatcher", "outbox-dispatcher-b"),
+    "COURSE_OUTBOX_MAX_ATTEMPTS": (
+        "postgres",
+        "outbox-dispatcher",
+        "outbox-dispatcher-b",
+    ),
+    "COURSE_OUTBOX_BACKOFF_BASE_MS": ("postgres",),
+    "COURSE_OUTBOX_BACKOFF_MAX_MS": ("postgres",),
+    "COURSE_OUTBOX_JITTER_MAX_MS": ("postgres",),
+    "COURSE_OUTBOX_LEASE_MS": (
+        "postgres",
+        "outbox-dispatcher",
+        "outbox-dispatcher-b",
+    ),
+    "COURSE_OUTBOX_POLL_MS": ("outbox-dispatcher", "outbox-dispatcher-b"),
+    "COURSE_INBOX_POLL_MS": ("inbox-reconciler", "inbox-reconciler-b"),
+    "COURSE_JOB_LEASE_MS": ("postgres", "worker-a", "worker-b"),
+    "COURSE_WORKER_POLL_MS": ("worker-a", "worker-b"),
+    "PROVIDER_CALLBACK_CAPABILITY": ("receipt-adapter", "provider-simulator"),
+    "PROVIDER_CALLBACK_TOKEN": ("receipt-adapter",),
+    "PROVIDER_HMAC_SECRET": ("receipt-adapter", "api"),
+    "RECEIPT_API_URL": ("receipt-adapter",),
+    "PROVIDER_AUDIT_TOKEN": ("provider-simulator",),
+}
 REQUIRED_VIEWS = {
     "contract_info",
     "action_definitions",
@@ -211,10 +334,14 @@ REQUIRED_VIEW_COLUMNS = {
         "external_request_id",
         "state",
         "attempt_count",
+        "lease_owner",
+        "lease_version",
+        "lease_until",
         "next_attempt_at",
         "last_error_code",
         "created_at",
         "delivered_at",
+        "dead_at",
     },
     "inbox": {"message_id", "body_hash", "state", "received_at", "applied_at"},
     "decisions": {
@@ -245,6 +372,7 @@ TIMESTAMPTZ_COLUMNS = {
     "applied_at",
     "completed_at",
     "created_at",
+    "dead_at",
     "delivered_at",
     "entered_at",
     "finished_at",
@@ -317,6 +445,19 @@ class HttpResult:
         except (UnicodeDecodeError, json.JSONDecodeError):
             return None
         return value if isinstance(value, dict) else None
+
+
+class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
+    ) -> None:
+        return None
 
 
 def utc_now() -> str:
@@ -422,6 +563,204 @@ def same_action_result(first: Any, second: Any) -> bool:
         and all(field in first and field in second for field in fields)
         and all(first[field] == second[field] for field in fields)
     )
+
+
+_METRIC_SAMPLE = re.compile(
+    r"^([A-Za-z_:][A-Za-z0-9_:]*)(?:\{([^}]*)\})?\s+"
+    r"([-+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][-+]?[0-9]+)?|"
+    r"NaN|[+-]?Inf)(?:\s+[0-9]+)?"
+    r"(?:\s+#\s+\{(?:[^\"\\}]|\\.|\"(?:\\.|[^\"\\])*\")*\}\s+"
+    r"[-+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][-+]?[0-9]+)?"
+    r"(?:\s+[0-9]+)?)?$"
+)
+_METRIC_LABEL = re.compile(
+    r'\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*"((?:\\.|[^"\\])*)"\s*'
+)
+
+
+def _metric_labels(value: str) -> dict[str, set[str]]:
+    labels: dict[str, set[str]] = {}
+    position = 0
+    while position < len(value):
+        match = _METRIC_LABEL.match(value, position)
+        if match is None:
+            raise ValueError("invalid OpenMetrics labels")
+        labels.setdefault(match.group(1), set()).add(match.group(2))
+        position = match.end()
+        if position == len(value):
+            break
+        if value[position] != ",":
+            raise ValueError("invalid OpenMetrics labels")
+        position += 1
+    return labels
+
+
+def _unbounded_metric_label_findings(labels: dict[str, set[str]]) -> list[str]:
+    findings: list[str] = []
+    uuid_pattern = re.compile(
+        r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
+        re.I,
+    )
+    for name, values in labels.items():
+        if len(values) > 20:
+            findings.append(f"{name}: more than 20 values in one scrape")
+        if any(len(value) > 64 or uuid_pattern.fullmatch(value) for value in values):
+            findings.append(f"{name}: identifier-like or oversized value")
+    return findings
+
+
+def parse_openmetrics(
+    text: str,
+) -> tuple[dict[str, list[float]], dict[str, set[str]], dict[str, str]]:
+    """Parse enough OpenMetrics syntax to validate published scalar series."""
+    if "\r" in text or not re.search(r"(?:^|\n)# EOF\n?\Z", text):
+        raise ValueError("OpenMetrics document must end with # EOF")
+    samples: dict[str, list[float]] = {}
+    labels: dict[str, set[str]] = {}
+    metric_types: dict[str, str] = {}
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        type_match = re.fullmatch(
+            r"#\s+TYPE\s+([A-Za-z_:][A-Za-z0-9_:]*)\s+"
+            r"(counter|gauge|histogram|gaugehistogram|summary|info|stateset|unknown)",
+            line,
+        )
+        if type_match:
+            name, metric_type = type_match.groups()
+            if name in metric_types and metric_types[name] != metric_type:
+                raise ValueError("conflicting OpenMetrics TYPE declarations")
+            metric_types[name] = metric_type
+            continue
+        if not line or line.startswith("#"):
+            continue
+        match = _METRIC_SAMPLE.fullmatch(line)
+        if match is None:
+            raise ValueError("invalid OpenMetrics sample")
+        name, raw_labels, raw_value = match.groups()
+        if raw_labels:
+            for label, values in _metric_labels(raw_labels).items():
+                labels.setdefault(label, set()).update(values)
+        samples.setdefault(name, []).append(float(raw_value))
+    return samples, labels, metric_types
+
+
+def validate_json_schema(value: Any, schema: dict[str, Any]) -> list[str]:
+    """Validate the JSON Schema subset used by the published result contracts."""
+
+    errors: list[str] = []
+
+    def resolve(reference: str) -> dict[str, Any]:
+        if not reference.startswith("#/"):
+            raise ValueError("only local JSON Schema references are supported")
+        current: Any = schema
+        for part in reference[2:].split("/"):
+            current = current[part.replace("~1", "/").replace("~0", "~")]
+        if not isinstance(current, dict):
+            raise ValueError("JSON Schema reference does not resolve to an object")
+        return current
+
+    def visit(item: Any, rule: dict[str, Any], path: str) -> None:
+        if "$ref" in rule:
+            visit(item, resolve(str(rule["$ref"])), path)
+            return
+        negated = rule.get("not")
+        if isinstance(negated, dict):
+            before = len(errors)
+            visit(item, negated, path)
+            matched = len(errors) == before
+            del errors[before:]
+            if matched:
+                errors.append(f"{path}: matches a forbidden schema")
+        alternatives = rule.get("oneOf")
+        if isinstance(alternatives, list):
+            matches = 0
+            for alternative in alternatives:
+                before = len(errors)
+                visit(item, alternative, path)
+                if len(errors) == before:
+                    matches += 1
+                else:
+                    del errors[before:]
+            if matches != 1:
+                errors.append(f"{path}: does not match exactly one schema")
+            return
+        expected_type = rule.get("type")
+        expected_types = (
+            expected_type if isinstance(expected_type, list) else [expected_type]
+        )
+        type_checks = {
+            "null": lambda candidate: candidate is None,
+            "object": lambda candidate: isinstance(candidate, dict),
+            "array": lambda candidate: isinstance(candidate, list),
+            "string": lambda candidate: isinstance(candidate, str),
+            "integer": lambda candidate: isinstance(candidate, int)
+            and not isinstance(candidate, bool),
+            "number": lambda candidate: isinstance(candidate, (int, float))
+            and not isinstance(candidate, bool),
+            "boolean": lambda candidate: isinstance(candidate, bool),
+        }
+        if expected_type is not None and not any(
+            type_checks.get(str(name), lambda candidate: False)(item)
+            for name in expected_types
+        ):
+            errors.append(f"{path}: invalid type")
+            return
+        if "const" in rule and item != rule["const"]:
+            errors.append(f"{path}: invalid constant")
+        if "enum" in rule and item not in rule["enum"]:
+            errors.append(f"{path}: value is outside enum")
+        if isinstance(item, str):
+            if len(item) < int(rule.get("minLength", 0)):
+                errors.append(f"{path}: string is too short")
+            if "maxLength" in rule and len(item) > int(rule["maxLength"]):
+                errors.append(f"{path}: string is too long")
+            if "pattern" in rule and re.search(str(rule["pattern"]), item) is None:
+                errors.append(f"{path}: string does not match pattern")
+            if rule.get("format") == "uuid":
+                try:
+                    uuid.UUID(item)
+                except ValueError:
+                    errors.append(f"{path}: string is not a UUID")
+            if rule.get("format") == "date-time":
+                try:
+                    parsed = dt.datetime.fromisoformat(item.replace("Z", "+00:00"))
+                    if parsed.tzinfo is None:
+                        raise ValueError
+                except ValueError:
+                    errors.append(f"{path}: string is not an RFC 3339 timestamp")
+        if isinstance(item, (int, float)) and not isinstance(item, bool):
+            if "minimum" in rule and item < rule["minimum"]:
+                errors.append(f"{path}: number is below minimum")
+        if isinstance(item, list):
+            if len(item) < int(rule.get("minItems", 0)):
+                errors.append(f"{path}: array has too few items")
+            if rule.get("uniqueItems"):
+                serialized = [
+                    json.dumps(entry, sort_keys=True, separators=(",", ":"))
+                    for entry in item
+                ]
+                if len(serialized) != len(set(serialized)):
+                    errors.append(f"{path}: array items are not unique")
+            item_rule = rule.get("items")
+            if isinstance(item_rule, dict):
+                for index, entry in enumerate(item):
+                    visit(entry, item_rule, f"{path}[{index}]")
+        if isinstance(item, dict):
+            required = rule.get("required", [])
+            for name in required:
+                if name not in item:
+                    errors.append(f"{path}.{name}: required property is missing")
+            properties = rule.get("properties", {})
+            if isinstance(properties, dict):
+                for name, child in properties.items():
+                    if name in item and isinstance(child, dict):
+                        visit(item[name], child, f"{path}.{name}")
+                if rule.get("additionalProperties") is False:
+                    for name in set(item) - set(properties):
+                        errors.append(f"{path}.{name}: additional property is forbidden")
+
+    visit(value, schema, "$")
+    return errors
 
 
 def canonical_fixture_digest(root: Path) -> str:
@@ -587,6 +926,19 @@ def _published_ports(service: Any) -> set[int]:
     return result
 
 
+def _published_host_ips(service: Any) -> set[str]:
+    result: set[str] = set()
+    if not isinstance(service, dict):
+        return result
+    for item in service.get("ports", []) or []:
+        if isinstance(item, dict):
+            result.add(str(item.get("host_ip") or ""))
+        elif isinstance(item, str):
+            value = item.split("/", 1)[0]
+            result.add("127.0.0.1" if value.startswith("127.0.0.1:") else "")
+    return result
+
+
 def _target_ports(service: Any) -> set[int]:
     result: set[int] = set()
     if not isinstance(service, dict):
@@ -684,7 +1036,63 @@ def _database_principals(environment: dict[str, str]) -> set[str]:
                 username = None
             if username:
                 principals.add(urllib.parse.unquote(username))
+        dsn_user = re.search(
+            r"(?:^|\s)user\s*=\s*(?:'((?:[^']|'')*)'|([^\s]+))", value, re.I
+        )
+        if dsn_user:
+            principals.add((dsn_user.group(1) or dsn_user.group(2)).replace("''", "'"))
+        npgsql_user = re.search(
+            r"(?:^|;)\s*(?:user\s*id|username)\s*=\s*([^;]+)", value, re.I
+        )
+        if npgsql_user:
+            principals.add(npgsql_user.group(1).strip())
     return principals
+
+
+def _environment_reference_findings(
+    config: dict[str, Any], reference_values: dict[str, str]
+) -> list[str]:
+    services = config.get("services", {})
+    if not isinstance(services, dict):
+        return ["services must be an object"]
+    findings: list[str] = []
+    for variable, recipients in REQUIRED_ENV_RECIPIENTS.items():
+        marker = reference_values[variable]
+        if variable == "COURSE_GATEWAY_PORT":
+            if _published_ports(services.get("gateway")) != {int(marker)}:
+                findings.append(
+                    "gateway: tracked ports must reference COURSE_GATEWAY_PORT"
+                )
+            continue
+        for service_name in recipients:
+            environment = _service_environment(services.get(service_name))
+            if not any(marker in value for value in environment.values()):
+                findings.append(
+                    f"{service_name}: tracked environment must reference {variable}"
+                )
+    return findings
+
+
+def _postgres_volume_findings(config: dict[str, Any]) -> list[str]:
+    services = config.get("services", {})
+    volumes = config.get("volumes", {}) or {}
+    if not isinstance(services, dict) or not isinstance(volumes, dict):
+        return ["PostgreSQL named volume configuration is invalid"]
+    postgres = services.get("postgres")
+    if not isinstance(postgres, dict):
+        return ["postgres service config is invalid"]
+    named_sources: set[str] = set()
+    for volume in postgres.get("volumes", []) or []:
+        if isinstance(volume, dict):
+            if volume.get("type") == "volume" and volume.get("source"):
+                named_sources.add(str(volume["source"]))
+        elif isinstance(volume, str):
+            source, separator, _ = volume.partition(":")
+            if separator and source and not source.startswith((".", "/")):
+                named_sources.add(source)
+    if not named_sources.intersection(volumes):
+        return ["postgres must persist data on a declared named volume"]
+    return []
 
 
 def _expected_column_type(column: str) -> str:
@@ -771,17 +1179,17 @@ def _provider_callback_base(config: dict[str, Any]) -> str:
     if (
         parsed.scheme != "http"
         or parsed.hostname != "receipt-adapter"
+        or port != 8082
         or parsed.username is not None
         or parsed.password is not None
         or parsed.query
         or parsed.fragment
-        or re.fullmatch(r"/callbacks/provider-v02/[^/]*", parsed.path) is None
+        or re.fullmatch(r"/callbacks/provider-v02/[^/]+", parsed.path) is None
     ):
         raise ContractError(
             "provider CALLBACK_URL must target the receipt-adapter callback path"
         )
-    authority = "receipt-adapter" if port in (None, 80) else f"receipt-adapter:{port}"
-    return f"http://{authority}/callbacks/provider-v02"
+    return "http://receipt-adapter:8082/callbacks/provider-v02"
 
 
 def _unsafe_compose_findings(config: dict[str, Any], repo: Path) -> list[str]:
@@ -793,10 +1201,23 @@ def _unsafe_compose_findings(config: dict[str, Any], repo: Path) -> list[str]:
         if not isinstance(service, dict):
             findings.append(f"{name}: service config is invalid")
             continue
-        if service.get("privileged") or service.get("network_mode") == "host":
+        if service.get("privileged"):
             findings.append(f"{name}: host/elevated runtime is forbidden")
-        if service.get("pid") == "host" or service.get("ipc") == "host":
-            findings.append(f"{name}: host namespace is forbidden")
+        for key in (
+            "network_mode",
+            "pid",
+            "ipc",
+            "uts",
+            "userns_mode",
+            "cgroup",
+            "cgroup_parent",
+            "runtime",
+            "isolation",
+            "security_opt",
+            "use_api_socket",
+        ):
+            if service.get(key):
+                findings.append(f"{name}: {key} is forbidden in untrusted Compose")
         if service.get("devices") or service.get("cap_add"):
             findings.append(f"{name}: device/capability access is forbidden")
         if any(
@@ -838,6 +1259,7 @@ def _unsafe_compose_findings(config: dict[str, Any], repo: Path) -> list[str]:
                         "privileged",
                         "secrets",
                         "ssh",
+                        "tags",
                     )
                 )
                 or build.get("network") == "host"
@@ -882,6 +1304,7 @@ def _unsafe_compose_findings(config: dict[str, Any], repo: Path) -> list[str]:
 
 def _compose_contract_findings(config: dict[str, Any], repo: Path) -> list[str]:
     findings = _unsafe_compose_findings(config, repo)
+    findings.extend(_postgres_volume_findings(config))
     services = config.get("services", {})
     if not isinstance(services, dict):
         return findings
@@ -892,8 +1315,14 @@ def _compose_contract_findings(config: dict[str, Any], repo: Path) -> list[str]:
     for name, service in services.items():
         ports = _published_ports(service)
         if name == "gateway":
-            if ports != {8080} or _target_ports(service) != {8080}:
-                findings.append("gateway must publish only host port 8080 to target 8080")
+            if (
+                ports != {8080}
+                or _target_ports(service) != {8080}
+                or _published_host_ips(service) != {"127.0.0.1"}
+            ):
+                findings.append(
+                    "gateway must bind 127.0.0.1:8080 only to target 8080"
+                )
         elif isinstance(service, dict) and service.get("ports"):
             findings.append(f"{name}: only gateway may publish host ports")
     provider = services["provider-simulator"]
@@ -913,13 +1342,27 @@ def _compose_contract_findings(config: dict[str, Any], repo: Path) -> list[str]:
     ):
         findings.append("Python integration services must run the locally built image")
     expected_roles = {
+        "api": "course_runtime",
+        "worker-a": "workflow_worker",
+        "worker-b": "workflow_worker",
         "outbox-dispatcher": "outbox_dispatcher",
+        "outbox-dispatcher-b": "outbox_dispatcher",
         "inbox-reconciler": "inbox_reconciler",
+        "inbox-reconciler-b": "inbox_reconciler",
     }
     for name, expected_role in expected_roles.items():
         principals = _database_principals(_service_environment(services[name]))
         if principals != {expected_role}:
             findings.append(f"{name}: database principal must be {expected_role}")
+    owners = {
+        name: _service_environment(services[name]).get("OUTBOX_OWNER")
+        for name in ("outbox-dispatcher", "outbox-dispatcher-b")
+    }
+    if owners != {
+        "outbox-dispatcher": "outbox-dispatcher",
+        "outbox-dispatcher-b": "outbox-dispatcher-b",
+    }:
+        findings.append("Outbox dispatchers must use distinct published owners")
     adapter = services["receipt-adapter"]
     adapter_environment = _service_environment(adapter)
     if _database_environment_entries(adapter_environment):
@@ -928,7 +1371,7 @@ def _compose_contract_findings(config: dict[str, Any], repo: Path) -> list[str]:
 
 
 def _runtime_compose_findings(
-    config: dict[str, Any], gateway_port: int
+    config: dict[str, Any], gateway_port: int, probe_ports: dict[str, int]
 ) -> list[str]:
     services = config.get("services", {})
     if not isinstance(services, dict):
@@ -939,9 +1382,22 @@ def _runtime_compose_findings(
         findings.append("runtime gateway must publish only the selected host port")
     if _target_ports(gateway) != {8080}:
         findings.append("runtime gateway must target container port 8080")
+    if _published_host_ips(gateway) != {"127.0.0.1"}:
+        findings.append("runtime gateway must bind only to loopback")
     for name, service in services.items():
-        if name != "gateway" and isinstance(service, dict) and service.get("ports"):
-            findings.append(f"{name}: runtime override must remove host ports")
+        if name == "gateway":
+            continue
+        expected_port = probe_ports.get(name)
+        if expected_port is None:
+            if isinstance(service, dict) and service.get("ports"):
+                findings.append(f"{name}: unexpected runtime host port")
+            continue
+        if (
+            _published_ports(service) != {expected_port}
+            or _target_ports(service) != {INTERNAL_PORTS[name]}
+            or _published_host_ips(service) != {"127.0.0.1"}
+        ):
+            findings.append(f"{name}: trusted probe port mapping is invalid")
     return findings
 
 
@@ -957,6 +1413,8 @@ class ComposeHarness:
         gateway_port: int,
         environment: dict[str, str],
         sensitive: Sequence[str],
+        probe_ports: dict[str, int] | None = None,
+        autocheck_password: str = "",
     ) -> None:
         self.repo = repo
         self.compose_file = compose_file
@@ -964,10 +1422,15 @@ class ComposeHarness:
         self.wrapper = wrapper
         self.project = project
         self.gateway_port = gateway_port
+        self.probe_ports = dict(probe_ports or {})
+        self.autocheck_password = autocheck_password
         self.environment = environment
         self.sensitive = tuple(sensitive)
         self.commands: list[dict[str, Any]] = []
         self.python_executables: dict[str, str] = {}
+        self.http_opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({}), NoRedirectHandler()
+        )
 
     def run(
         self,
@@ -1049,12 +1512,14 @@ class ComposeHarness:
         command.extend(args)
         return self.run(command, timeout=timeout, environment=environment)
 
-    def candidate_config(self) -> CommandResult:
+    def candidate_config(
+        self, environment: dict[str, str] | None = None
+    ) -> CommandResult:
         return self.compose(
             ("config", "--format", "json", "--no-env-resolution"),
             override=False,
             timeout=30,
-            environment={"COURSE_GATEWAY_PORT": "8080"},
+            environment={"COURSE_GATEWAY_PORT": "8080", **(environment or {})},
         )
 
     def runtime_config(self) -> CommandResult:
@@ -1073,6 +1538,28 @@ class ComposeHarness:
             raise ContractError(f"service {service} has no running container")
         return value
 
+    def service_state(self, service: str) -> tuple[str, int]:
+        result = self.compose(("ps", "-a", "-q", service), timeout=15)
+        self.require_docker_result(result, f"service {service} has no container")
+        container = result.stdout.strip()
+        if re.fullmatch(r"[a-f0-9]{12,64}", container) is None:
+            raise ContractError(f"service {service} has no container")
+        inspected = self.run(
+            (
+                "docker",
+                "inspect",
+                "--format",
+                "{{.State.Status}} {{.State.ExitCode}}",
+                container,
+            ),
+            timeout=15,
+        )
+        self.require_docker_result(inspected, f"cannot inspect state for {service}")
+        match = re.fullmatch(r"([a-z]+)\s+(-?\d+)\s*", inspected.stdout)
+        if match is None:
+            raise ContractError(f"cannot inspect state for {service}")
+        return match.group(1), int(match.group(2))
+
     def image_id(self, service: str) -> str:
         container = self.container_id(service)
         result = self.run(("docker", "inspect", "--format", "{{.Image}}", container))
@@ -1081,6 +1568,34 @@ class ComposeHarness:
         if re.fullmatch(r"sha256:[a-f0-9]{64}", value) is None:
             raise ContractError(f"cannot inspect image for {service}")
         return value
+
+    def container_ips(self, service: str) -> set[str]:
+        container = self.container_id(service)
+        result = self.run(
+            (
+                "docker",
+                "inspect",
+                "--format",
+                "{{json .NetworkSettings.Networks}}",
+                container,
+            ),
+            timeout=15,
+        )
+        self.require_docker_result(result, f"cannot inspect networks for {service}")
+        try:
+            networks = json.loads(result.stdout)
+            addresses = {
+                str(network.get("IPAddress"))
+                for network in networks.values()
+                if isinstance(network, dict) and network.get("IPAddress")
+            }
+            for address in addresses:
+                ipaddress.ip_address(address)
+        except (AttributeError, TypeError, ValueError, json.JSONDecodeError) as error:
+            raise ContractError(f"cannot inspect networks for {service}") from error
+        if not addresses:
+            raise ContractError(f"service {service} has no container IP")
+        return addresses
 
     def local_image_id(self, image: str) -> str:
         result = self.run(
@@ -1167,10 +1682,11 @@ class ComposeHarness:
     def detect_python_runtime(self, service: str) -> tuple[int, int, int]:
         container = self.container_id(service)
         executable = self.main_process_executable(service)
+        runtime_executable = executable
         if re.fullmatch(r"python(?:3(?:\.\d+)?)?", Path(executable).name) is None:
-            raise ContractError(f"main process for {service} is not Python")
+            runtime_executable = "/proc/1/exe"
         result = self.run(
-            ("docker", "exec", container, executable, "--version"),
+            ("docker", "exec", container, runtime_executable, "--version"),
             timeout=15,
         )
         match = re.search(
@@ -1182,7 +1698,7 @@ class ComposeHarness:
         )
         if match is None:
             raise ContractError(f"cannot determine Python runtime for {service}")
-        self.python_executables[service] = executable
+        self.python_executables[service] = runtime_executable
         return tuple(int(value) for value in match.groups())
 
     def http(
@@ -1201,7 +1717,7 @@ class ComposeHarness:
             headers=headers or {},
         )
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            with self.http_opener.open(request, timeout=timeout) as response:
                 return HttpResult(
                     response.status,
                     response.read(1024 * 1024),
@@ -1263,17 +1779,18 @@ class ComposeHarness:
             "SELECT COALESCE(jsonb_agg(to_jsonb(q)), '[]'::jsonb)::text "
             f"FROM ({query}) AS q"
         )
-        result = self.compose(
+        result = self.run(
             (
-                "exec",
-                "-T",
-                "postgres",
                 "psql",
                 "-X",
                 "-v",
                 "ON_ERROR_STOP=1",
                 "-U",
-                "postgres",
+                "autocheck_reader",
+                "-h",
+                "127.0.0.1",
+                "-p",
+                str(self.probe_ports["postgres"]),
                 "-d",
                 "course",
                 "-At",
@@ -1281,11 +1798,14 @@ class ComposeHarness:
                 wrapped,
             ),
             timeout=timeout,
+            environment={
+                "PGPASSWORD": self.autocheck_password,
+                "PGCONNECT_TIMEOUT": "5",
+                "PGOPTIONS": "-c default_transaction_read_only=on -c statement_timeout=30000",
+            },
         )
         if not result.ok:
-            self.require_docker_result(
-                result, "required read-only PostgreSQL query failed"
-            )
+            raise ContractError("required read-only PostgreSQL query failed")
         try:
             value = json.loads(result.stdout.strip())
         except json.JSONDecodeError as error:
@@ -1305,47 +1825,50 @@ class ComposeHarness:
         body: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
     ) -> HttpResult:
-        script = (
-            "import base64,json,sys,urllib.error,urllib.request;"
-            "data=base64.b64decode(sys.argv[3]) if sys.argv[3] else None;"
-            "req=urllib.request.Request(sys.argv[2],data=data,method=sys.argv[1],"
-            "headers=json.loads(sys.argv[4]));"
-            "status=0;out=b'';hdr={};"
-            "\ntry:\n r=urllib.request.urlopen(req,timeout=15);status=r.status;"
-            "out=r.read(1048576);hdr=dict(r.headers.items())"
-            "\nexcept urllib.error.HTTPError as e:\n status=e.code;"
-            "out=e.read(1048576);hdr=dict(e.headers.items())"
-            "\nprint(json.dumps({'status':status,'data':base64.b64encode(out).decode(),"
-            "'headers':hdr},separators=(',',':')))"
-        )
-        encoded = ""
-        if body is not None:
-            encoded = base64.b64encode(receipt_bytes(body)).decode("ascii")
-        result = self.compose(
-            (
-                "exec",
-                "-T",
-                service,
-                self.python_executables.get(service, "python3"),
-                "-c",
-                script,
-                method,
-                url,
-                encoded,
-                json.dumps(headers or {}, separators=(",", ":")),
-            ),
-            timeout=30,
-        )
-        self.require_docker_result(result, f"internal HTTP probe failed in {service}")
         try:
-            value = json.loads(result.stdout.strip())
-            return HttpResult(
-                int(value["status"]),
-                base64.b64decode(value["data"]),
-                {str(key): str(item) for key, item in value["headers"].items()},
+            parsed = urllib.parse.urlsplit(url)
+            expected_port = INTERNAL_PORTS[service]
+        except (KeyError, ValueError) as error:
+            raise ContractError("internal HTTP probe target is invalid") from error
+        if (
+            parsed.scheme != "http"
+            or parsed.hostname != service
+            or (parsed.port or 80) != expected_port
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.fragment
+        ):
+            raise ContractError("internal HTTP probe target is invalid")
+        target = urllib.parse.urlunsplit(
+            (
+                "http",
+                f"127.0.0.1:{self.probe_ports[service]}",
+                parsed.path,
+                parsed.query,
+                "",
             )
-        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
-            raise ContractError("internal HTTP probe returned invalid data") from error
+        )
+        request = urllib.request.Request(
+            target,
+            data=receipt_bytes(body) if body is not None else None,
+            method=method,
+            headers=headers or {},
+        )
+        try:
+            with self.http_opener.open(request, timeout=15) as response:
+                return HttpResult(
+                    response.status,
+                    response.read(1024 * 1024),
+                    dict(response.headers.items()),
+                )
+        except urllib.error.HTTPError as error:
+            return HttpResult(
+                error.code,
+                error.read(1024 * 1024),
+                dict(error.headers.items()),
+            )
+        except (urllib.error.URLError, TimeoutError, socket.timeout, OSError) as error:
+            raise ContractError(f"internal HTTP probe failed for {service}") from error
 
 
 class PublicChecker:
@@ -1358,9 +1881,11 @@ class PublicChecker:
         self.fixture: dict[str, Any] = {}
         self.checks: list[dict[str, Any]] = []
         self.cleanup_armed = False
-        self.override = Path(tempfile.mkdtemp(prefix="week3-check-")) / "override.yaml"
-        self.project = f"week3-public-{secrets.token_hex(4)}"
-        self.gateway_port = self._free_port()
+        self.override = Path(tempfile.mkdtemp(prefix="week4-check-")) / "override.yaml"
+        self.project = f"week4-public-{secrets.token_hex(4)}"
+        allocated_ports = self._free_ports(1 + len(INTERNAL_PORTS))
+        self.gateway_port = allocated_ports[0]
+        self.probe_ports = dict(zip(INTERNAL_PORTS, allocated_ports[1:], strict=True))
         self.jwt_secret = secrets.token_urlsafe(48)
         self.hmac_secret = secrets.token_urlsafe(40)
         self.capability = secrets.token_urlsafe(24)
@@ -1375,6 +1900,7 @@ class PublicChecker:
                 "COURSE_WORKER_PASSWORD",
                 "COURSE_OUTBOX_PASSWORD",
                 "COURSE_INBOX_PASSWORD",
+                "COURSE_AUTOCHECK_PASSWORD",
             )
         }
         self.issuer = "moduledev-course"
@@ -1404,6 +1930,14 @@ class PublicChecker:
             issuer=self.issuer,
             audience=self.audience,
         )
+        self.diagnostics_token = issue_token(
+            self.jwt_secret,
+            "course-observer",
+            "autocheck",
+            ("diagnostics:read",),
+            issuer=self.issuer,
+            audience=self.audience,
+        )
         environment = {
             "COMPOSE_PARALLEL_LIMIT": "2",
             "COURSE_GATEWAY_PORT": str(self.gateway_port),
@@ -1413,6 +1947,17 @@ class PublicChecker:
             "COURSE_JWT_SIGNING_KEY": self.jwt_secret,
             "PROVIDER_URL": "http://provider-simulator:8081",
             "OUTBOX_OWNER": "outbox-dispatcher",
+            "OUTBOX_OWNER_B": "outbox-dispatcher-b",
+            "COURSE_PROVIDER_TIMEOUT_MS": "500",
+            "COURSE_OUTBOX_MAX_ATTEMPTS": "4",
+            "COURSE_OUTBOX_BACKOFF_BASE_MS": "200",
+            "COURSE_OUTBOX_BACKOFF_MAX_MS": "800",
+            "COURSE_OUTBOX_JITTER_MAX_MS": "100",
+            "COURSE_OUTBOX_LEASE_MS": "2000",
+            "COURSE_OUTBOX_POLL_MS": "100",
+            "COURSE_INBOX_POLL_MS": "500",
+            "COURSE_JOB_LEASE_MS": "2000",
+            "COURSE_WORKER_POLL_MS": "100",
             "PROVIDER_CALLBACK_CAPABILITY": self.capability,
             "PROVIDER_CALLBACK_TOKEN": self.receipt_token,
             "PROVIDER_HMAC_SECRET": self.hmac_secret,
@@ -1428,20 +1973,45 @@ class PublicChecker:
             self.receipt_token,
             self.client_token,
             self.reviewer_token,
+            self.diagnostics_token,
             *self.database_secrets.values(),
         )
         self.harness: ComposeHarness | None = None
         self.environment = environment
         self.image_ids: dict[str, str] = {}
+        self.isolated_images: set[str] = set()
+        self.captured_logs: list[str] = []
+        contract_root = Path(__file__).resolve().parents[1] / "contracts" / "course-1"
+        self.result_schemas = {
+            name: json.loads((contract_root / name).read_text(encoding="utf-8"))
+            for name in (
+                "payment-submit.result.schema.json",
+                "diagnostics-trace.result.schema.json",
+                "diagnostics-stalled.result.schema.json",
+            )
+        }
+        self.restart_callback: tuple[str, dict[str, Any], int, dict[str, Any]] | None = (
+            None
+        )
+        self.restart_manual: tuple[
+            dict[str, Any], str, int, dict[str, Any]
+        ] | None = None
         self.forbidden_log_values: dict[str, str] = {
             "provider-callback-message": "Payment completed",
         }
 
     @staticmethod
-    def _free_port() -> int:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.bind(("127.0.0.1", 0))
-            return int(sock.getsockname()[1])
+    def _free_ports(count: int) -> list[int]:
+        sockets: list[socket.socket] = []
+        try:
+            for _ in range(count):
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.bind(("127.0.0.1", 0))
+                sockets.append(sock)
+            return [int(sock.getsockname()[1]) for sock in sockets]
+        finally:
+            for sock in sockets:
+                sock.close()
 
     def _record(self, name: str, phase: str, expected: Any, actual: Any) -> None:
         passed = expected(actual) if callable(expected) else actual == expected
@@ -1467,12 +2037,36 @@ class PublicChecker:
         raise ContractError("candidate Compose file is missing")
 
     def _write_override(self, config: dict[str, Any]) -> None:
+        services = config.get("services", {})
+        isolated_images: dict[str, str] = {}
+        if isinstance(services, dict):
+            groups: dict[str, list[str]] = {}
+            for name, service in services.items():
+                if name == "provider-simulator" or not isinstance(
+                    service, dict
+                ):
+                    continue
+                key = str(service.get("image") or f"service:{name}")
+                groups.setdefault(key, []).append(name)
+            for index, names in enumerate(groups.values(), start=1):
+                if any(services[name].get("build") for name in names):
+                    tag = f"{self.project}-build-{index}:check"
+                    isolated_images.update({name: tag for name in names})
+        self.isolated_images = set(isolated_images.values())
         lines = ["services:"]
-        for name in sorted(REQUIRED_SERVICES):
+        service_names = set(services) if isinstance(services, dict) else REQUIRED_SERVICES
+        for name in sorted(service_names):
             lines.extend((f"  {name}:", "    container_name: !reset null"))
+            if name in isolated_images:
+                lines.append(f"    image: {json.dumps(isolated_images[name])}")
             if name == "gateway":
                 lines.append(
                     '    ports: !override ["127.0.0.1:${COURSE_GATEWAY_PORT}:8080"]'
+                )
+            elif name in self.probe_ports:
+                lines.append(
+                    "    ports: !override "
+                    f"[\"127.0.0.1:{self.probe_ports[name]}:{INTERNAL_PORTS[name]}\"]"
                 )
             else:
                 lines.append("    ports: !reset []")
@@ -1482,21 +2076,48 @@ class PublicChecker:
             "COURSE_JWT_SIGNING_KEY": "${COURSE_JWT_SIGNING_KEY}",
             "COURSE_TEST_PROFILE": "1",
         }
+        outbox_policy = {
+            "COURSE_PROVIDER_TIMEOUT_MS": "500",
+            "COURSE_OUTBOX_MAX_ATTEMPTS": "4",
+            "COURSE_OUTBOX_BACKOFF_BASE_MS": "200",
+            "COURSE_OUTBOX_BACKOFF_MAX_MS": "800",
+            "COURSE_OUTBOX_JITTER_MAX_MS": "100",
+            "COURSE_OUTBOX_LEASE_MS": "2000",
+            "COURSE_OUTBOX_POLL_MS": "100",
+        }
+        worker_policy = {
+            "COURSE_JOB_LEASE_MS": "2000",
+            "COURSE_WORKER_POLL_MS": "100",
+        }
         environment: dict[str, dict[str, str]] = {
             "gateway": dict(common_application),
             "api": {
                 **common_application,
                 "PROVIDER_HMAC_SECRET": "${PROVIDER_HMAC_SECRET}",
             },
-            "cli": dict(common_application),
-            "worker-a": dict(common_application),
-            "worker-b": dict(common_application),
+            "cli": {**common_application, **outbox_policy},
+            "postgres": {
+                **outbox_policy,
+                "COURSE_JOB_LEASE_MS": "2000",
+                "COURSE_AUTOCHECK_PASSWORD": "${COURSE_AUTOCHECK_PASSWORD}",
+            },
+            "worker-a": {**common_application, **worker_policy},
+            "worker-b": {**common_application, **worker_policy},
             "outbox-dispatcher": {
-                "PGAPPNAME": "week3-public-outbox-dispatcher",
+                "PGAPPNAME": "week4-public-outbox-dispatcher",
                 "PGUSER": "outbox_dispatcher",
                 "PROVIDER_URL": "http://provider-simulator:8081",
                 "OUTBOX_OWNER": "outbox-dispatcher",
                 "COURSE_TEST_PROFILE": "1",
+                **outbox_policy,
+            },
+            "outbox-dispatcher-b": {
+                "PGAPPNAME": "week4-public-outbox-dispatcher-b",
+                "PGUSER": "outbox_dispatcher",
+                "PROVIDER_URL": "http://provider-simulator:8081",
+                "OUTBOX_OWNER": "outbox-dispatcher-b",
+                "COURSE_TEST_PROFILE": "1",
+                **outbox_policy,
             },
             "receipt-adapter": {
                 "PROVIDER_CALLBACK_CAPABILITY": "${PROVIDER_CALLBACK_CAPABILITY}",
@@ -1506,9 +2127,16 @@ class PublicChecker:
                 "COURSE_TEST_PROFILE": "1",
             },
             "inbox-reconciler": {
-                "PGAPPNAME": "week3-public-inbox-reconciler",
+                "PGAPPNAME": "week4-public-inbox-reconciler",
                 "PGUSER": "inbox_reconciler",
                 "COURSE_TEST_PROFILE": "1",
+                "COURSE_INBOX_POLL_MS": "500",
+            },
+            "inbox-reconciler-b": {
+                "PGAPPNAME": "week4-public-inbox-reconciler-b",
+                "PGUSER": "inbox_reconciler",
+                "COURSE_TEST_PROFILE": "1",
+                "COURSE_INBOX_POLL_MS": "500",
             },
             "provider-simulator": {
                 "CALLBACK_URL": self.callback_base + "/${PROVIDER_CALLBACK_CAPABILITY}",
@@ -1555,6 +2183,39 @@ class PublicChecker:
         value = json.loads((self.fixtures / relative).read_text(encoding="utf-8"))
         assert isinstance(value, dict)
         return value
+
+    def _preflight_compose_features(self) -> None:
+        base = self.override.parent / "compose-preflight-base.yaml"
+        override = self.override.parent / "compose-preflight-override.yaml"
+        base.write_text(
+            "services:\n  probe:\n    image: busybox\n"
+            "    container_name: preflight\n    ports: [\"127.0.0.1:1:1\"]\n",
+            encoding="utf-8",
+        )
+        override.write_text(
+            "services:\n  probe:\n    container_name: !reset null\n"
+            "    ports: !override []\n",
+            encoding="utf-8",
+        )
+        result = self.h.run(
+            (
+                "docker",
+                "compose",
+                "-f",
+                str(base),
+                "-f",
+                str(override),
+                "config",
+                "--format",
+                "json",
+                "--no-env-resolution",
+            ),
+            timeout=30,
+        )
+        if not result.ok:
+            raise EnvironmentFailure(
+                "Docker Compose lacks required !override/!reset/config features"
+            )
 
     @property
     def h(self) -> ComposeHarness:
@@ -1640,8 +2301,17 @@ class PublicChecker:
             or submit_json.get("status") != "ok"
         ):
             raise ContractError(f"payment.submit failed for {label}")
+        submit_result = submit_json.get("result")
+        schema_errors = validate_json_schema(
+            submit_result,
+            self.result_schemas["payment-submit.result.schema.json"],
+        )
+        if schema_errors:
+            raise ContractError("payment.submit result violates its published schema")
+        if submit_result.get("operationId") != operation_id:
+            raise ContractError("payment.submit returned a different operationId")
         process_id = self._uuid(
-            submit_json.get("result", {}).get("processId"), "processId"
+            submit_result.get("processId"), "processId"
         )
         return operation_id, process_id
 
@@ -1671,11 +2341,247 @@ class PublicChecker:
     def _provider_audit(self, external_request_id: str) -> HttpResult:
         quoted = urllib.parse.quote(external_request_id, safe="")
         return self.h.internal_http(
-            "receipt-adapter",
+            "provider-simulator",
             "GET",
             f"http://provider-simulator:8081/internal/audit/{quoted}",
             headers={"X-Audit-Token": self.audit_token},
         )
+
+    def _service_http(self, service: str, path: str) -> HttpResult:
+        return self.h.internal_http(
+            service,
+            "GET",
+            OBSERVABILITY_ENDPOINTS[service] + path,
+        )
+
+    @staticmethod
+    def _content_type(response: HttpResult) -> str:
+        for name, value in response.headers.items():
+            if name.lower() == "content-type":
+                return value.lower()
+        return ""
+
+    def _service_is_ready(self, service: str) -> bool:
+        response = self._service_http(service, "/health/ready")
+        value = response.json()
+        return (
+            response.status == 200
+            and self._content_type(response).startswith("application/json")
+            and isinstance(value, dict)
+            and value.get("status") == "ready"
+        )
+
+    def _read_metrics(
+        self, service: str
+    ) -> tuple[dict[str, list[float]], dict[str, set[str]], dict[str, str]]:
+        response = self._service_http(service, "/metrics")
+        if response.status != 200:
+            raise ContractError(f"{service} metrics did not return 200")
+        if self._content_type(response) != (
+            "application/openmetrics-text; version=1.0.0; charset=utf-8"
+        ):
+            raise ContractError(f"{service} metrics media type is not OpenMetrics")
+        try:
+            text = response.body.decode("utf-8")
+            return parse_openmetrics(text)
+        except (UnicodeDecodeError, ValueError) as error:
+            raise ContractError(f"{service} metrics are invalid OpenMetrics") from error
+
+    def _wait_service_ready(self, service: str, timeout: float = 30) -> None:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                if self._service_is_ready(service):
+                    return
+            except ContractError:
+                pass
+            time.sleep(0.1)
+        raise ContractError(f"{service} readiness did not become 200")
+
+    def _check_observability_endpoints(self) -> None:
+        for service in OBSERVABILITY_ENDPOINTS:
+            live = self._service_http(service, "/health/live")
+            live_json = live.json()
+            self._record(
+                f"health-live-{service}",
+                "observability",
+                True,
+                live.status == 200
+                and self._content_type(live).startswith("application/json")
+                and isinstance(live_json, dict)
+                and live_json.get("status") == "live",
+            )
+            self._record(
+                f"health-ready-{service}",
+                "observability",
+                True,
+                self._service_is_ready(service),
+            )
+            samples, labels, metric_types = self._read_metrics(service)
+            self._record(
+                f"metrics-bounded-labels-{service}",
+                "observability",
+                set(),
+                set(labels) & FORBIDDEN_METRIC_LABELS,
+            )
+            self._record(
+                f"metrics-bounded-label-values-{service}",
+                "observability",
+                [],
+                _unbounded_metric_label_findings(labels),
+            )
+            if service == "api":
+                self._record(
+                    "metrics-required-series",
+                    "observability",
+                    True,
+                    REQUIRED_METRICS <= set(samples),
+                )
+                self._record(
+                    "metrics-required-types",
+                    "observability",
+                    REQUIRED_METRIC_TYPES,
+                    {
+                        name: metric_types.get(name)
+                        for name in REQUIRED_METRIC_TYPES
+                    },
+                )
+
+    def _check_provider_outage_recovery(self) -> tuple[str, str]:
+        stopped_dispatchers = self.h.compose(
+            ("stop", "outbox-dispatcher", "outbox-dispatcher-b"), timeout=30
+        )
+        self.h.require_docker_result(
+            stopped_dispatchers, "cannot stop dispatchers for outage scenario"
+        )
+        stopped_provider = self.h.compose(("stop", "provider-simulator"), timeout=30)
+        self.h.require_docker_result(
+            stopped_provider, "cannot stop provider for outage scenario"
+        )
+        started = self.h.compose(
+            ("up", "-d", "--no-build", "--no-deps", "outbox-dispatcher"), timeout=30
+        )
+        self.h.require_docker_result(started, "cannot start dispatcher during outage")
+        self._wait_service_ready("outbox-dispatcher")
+        self._record(
+            "provider-outage-keeps-runtime-ready",
+            "observability",
+            True,
+            all(
+                self._service_is_ready(service)
+                for service in ("api", "worker-a", "worker-b", "outbox-dispatcher")
+            ),
+        )
+        stopped = self.h.compose(("stop", "outbox-dispatcher"), timeout=30)
+        self.h.require_docker_result(stopped, "cannot prepare pending outage request")
+        operation_id, process_id = self._create_and_submit(
+            "providerRequest", "provider-outage"
+        )
+        external_rows = self._external_request(operation_id)
+        external_id = self._text_id(
+            external_rows[0].get("external_request_id"), "externalRequestId"
+        )
+        samples, _, _ = self._read_metrics("api")
+        self._record(
+            "metrics-reflect-pending-outbox",
+            "observability",
+            True,
+            any(value >= 1 for value in samples.get("outbox_pending", [])),
+        )
+        started = self.h.compose(
+            ("up", "-d", "--no-build", "--no-deps", "outbox-dispatcher"), timeout=30
+        )
+        self.h.require_docker_result(started, "cannot start delivery during outage")
+        external_sql = self._sql_text(external_id)
+        retry_query = (
+            "SELECT state, attempt_count, next_attempt_at, last_error_code "
+            "FROM autocheck.outbox "
+            f"WHERE external_request_id = {external_sql}"
+        )
+        retry_rows = self._poll_rows(
+            retry_query,
+            lambda rows: len(rows) == 1
+            and rows[0].get("state") in {"RETRY_WAIT", "DEAD"},
+            timeout=15,
+        )
+        paused = self.h.compose(("pause", "outbox-dispatcher"), timeout=30)
+        self.h.require_docker_result(paused, "cannot pause retrying dispatcher")
+        try:
+            self._require_recovery_window(self.h.psql_rows(retry_query))
+            self._record(
+                "provider-outage-persists-retry",
+                "reliability",
+                True,
+                len(retry_rows) == 1
+                and retry_rows[0].get("state") == "RETRY_WAIT"
+                and int(retry_rows[0].get("attempt_count", 0)) >= 1
+                and retry_rows[0].get("next_attempt_at") is not None
+                and str(retry_rows[0].get("last_error_code", "")).endswith(".retryable"),
+            )
+            start_provider = self.h.compose(
+                ("up", "-d", "--no-build", "--no-deps", "provider-simulator"), timeout=30
+            )
+            self.h.require_docker_result(start_provider, "cannot restore provider")
+            deadline = time.monotonic() + 30
+            while True:
+                try:
+                    if self._provider_audit(external_id).status in {200, 404}:
+                        break
+                except ContractError:
+                    pass
+                if time.monotonic() >= deadline:
+                    raise EnvironmentFailure("provider did not become available before recovery")
+                time.sleep(0.1)
+        finally:
+            resumed = self.h.compose(("unpause", "outbox-dispatcher"), timeout=30)
+            self.h.require_docker_result(resumed, "cannot unpause dispatcher")
+        resume = self.h.compose(
+            (
+                "up",
+                "-d",
+                "--no-build",
+                "--no-deps",
+                "outbox-dispatcher-b",
+            ),
+            timeout=30,
+        )
+        self.h.require_docker_result(resume, "cannot resume concurrent dispatchers")
+        completed = self._wait_operation(operation_id, "COMPLETED")
+        audit = self._provider_audit(external_id)
+        audit_json = audit.json()
+        self._record(
+            "provider-recovery-completes-once",
+            "reliability",
+            True,
+            len(completed) == 1
+            and completed[0].get("process_id") == process_id
+            and audit.status == 200
+            and isinstance(audit_json, dict)
+            and audit_json.get("paymentCount") == 1,
+        )
+        return operation_id, process_id
+
+    @staticmethod
+    def _require_recovery_window(rows: list[dict[str, Any]]) -> None:
+        if len(rows) != 1:
+            raise ContractError("outage delivery is missing")
+        row = rows[0]
+        attempts = row.get("attempt_count")
+        state = row.get("state")
+        if not isinstance(attempts, int) or not 1 <= attempts <= 4:
+            raise ContractError("outage delivery has invalid attempt count")
+        if state == "DEAD" and attempts < 4:
+            raise ContractError("retryable outage exhausted before the attempt limit")
+        if state not in {"RETRY_WAIT", "LEASED", "DEAD"}:
+            raise ContractError("outage delivery has unexpected state")
+        if state != "LEASED" and not str(row.get("last_error_code", "")).endswith(".retryable"):
+            raise ContractError("provider outage is not classified as retryable")
+        # A LEASED row may count only completed attempts; allow one in-flight failure.
+        if attempts == 4 or (state == "LEASED" and attempts >= 3):
+            raise EnvironmentFailure(
+                "checker missed the recovery window before the last Outbox attempt; "
+                "rerun on a responsive Docker host"
+            )
 
     def _check_admission_and_start(self) -> None:
         self.fixture = load_fixture(self.fixtures)
@@ -1689,6 +2595,8 @@ class PublicChecker:
             wrapper=self.wrapper,
             project=self.project,
             gateway_port=self.gateway_port,
+            probe_ports=self.probe_ports,
+            autocheck_password=self.database_secrets["COURSE_AUTOCHECK_PASSWORD"],
             environment=self.environment,
             sensitive=self.sensitive,
         )
@@ -1697,6 +2605,13 @@ class PublicChecker:
         )
         if not docker_probe.ok:
             raise EnvironmentFailure("Docker daemon is unavailable")
+        compose_version = self.h.run(("docker", "compose", "version", "--short"))
+        if not compose_version.ok:
+            raise EnvironmentFailure("Docker Compose is unavailable")
+        self._preflight_compose_features()
+        psql_probe = self.h.run(("psql", "--version"), timeout=15)
+        if not psql_probe.ok:
+            raise EnvironmentFailure("trusted PostgreSQL client is unavailable")
         config_result = self.h.candidate_config()
         if not config_result.ok:
             self.h.require_docker_result(
@@ -1706,6 +2621,30 @@ class PublicChecker:
             config = json.loads(config_result.stdout)
         except json.JSONDecodeError as error:
             raise ContractError("candidate Compose config is not JSON") from error
+        reference_values = {
+            variable: (
+                str(40000 + secrets.randbelow(20000))
+                if variable == "COURSE_GATEWAY_PORT"
+                else f"week4-source-reference-{secrets.token_hex(12)}-{index}"
+            )
+            for index, variable in enumerate(REQUIRED_ENV_RECIPIENTS, start=1)
+        }
+        reference_config_result = self.h.candidate_config(reference_values)
+        if not reference_config_result.ok:
+            self.h.require_docker_result(
+                reference_config_result,
+                "candidate Compose environment references are invalid",
+            )
+        try:
+            reference_config = json.loads(reference_config_result.stdout)
+        except json.JSONDecodeError as error:
+            raise ContractError("candidate Compose reference config is not JSON") from error
+        self._record(
+            "compose-environment-contract",
+            "admission",
+            [],
+            _environment_reference_findings(reference_config, reference_values),
+        )
         findings = _compose_contract_findings(config, self.repo)
         findings.extend(
             _secret_distribution_findings(
@@ -1762,11 +2701,23 @@ class PublicChecker:
                     ),
                     "outbox-password": (
                         self.database_secrets["COURSE_OUTBOX_PASSWORD"],
-                        {("postgres", "*"), ("outbox-dispatcher", "*")},
+                        {
+                            ("postgres", "*"),
+                            ("outbox-dispatcher", "*"),
+                            ("outbox-dispatcher-b", "*"),
+                        },
                     ),
                     "inbox-password": (
                         self.database_secrets["COURSE_INBOX_PASSWORD"],
-                        {("postgres", "*"), ("inbox-reconciler", "*")},
+                        {
+                            ("postgres", "*"),
+                            ("inbox-reconciler", "*"),
+                            ("inbox-reconciler-b", "*"),
+                        },
+                    ),
+                    "autocheck-password": (
+                        self.database_secrets["COURSE_AUTOCHECK_PASSWORD"],
+                        {("postgres", "*")},
                     ),
                 },
             )
@@ -1787,7 +2738,9 @@ class PublicChecker:
             "runtime-compose-contract",
             "admission",
             [],
-            _runtime_compose_findings(runtime_config, self.gateway_port),
+            _runtime_compose_findings(
+                runtime_config, self.gateway_port, self.probe_ports
+            ),
         )
         self.cleanup_armed = True
         pull = self.h.run(("docker", "pull", PROVIDER_IMAGE), timeout=180)
@@ -1796,23 +2749,22 @@ class PublicChecker:
         build = self.h.compose(("build", "--pull", "--no-cache"), timeout=1800)
         if not build.ok:
             self.h.require_docker_result(build, "candidate images did not build")
-        services = config["services"]
-        python_image = str(services[PYTHON_SERVICES[0]]["image"])
-        built_python_id = self.h.local_image_id(python_image)
         up = self.h.compose(("up", "-d", "--no-build"), timeout=600)
         if not up.ok:
             self.h.require_docker_result(up, "candidate stack did not start")
         self.h.wait_gateway()
         for service in RUNNING_SERVICES:
             self.h.container_id(service)
+        cli_status, cli_exit_code = self.h.service_state("cli")
+        self._record(
+            "cli-startup-completed",
+            "admission",
+            True,
+            cli_status == "running"
+            or (cli_status == "exited" and cli_exit_code == 0),
+        )
         python_ids = {self.h.image_id(service) for service in PYTHON_SERVICES}
         self._record("python-single-image", "admission", 1, len(python_ids))
-        self._record(
-            "python-locally-built-image",
-            "admission",
-            {built_python_id},
-            python_ids,
-        )
         for service in PYTHON_SERVICES:
             version = self.h.detect_python_runtime(service)
             self._record(
@@ -1828,19 +2780,145 @@ class PublicChecker:
         }
 
     def _check_database_contract(self) -> None:
+        identity = self.h.psql_rows(
+            "SELECT current_user AS current_user, "
+            "current_setting('transaction_read_only') AS transaction_read_only"
+        )
+        self._record(
+            "trusted-read-only-database-channel",
+            "startup",
+            True,
+            identity
+            == [
+                {
+                    "current_user": "autocheck_reader",
+                    "transaction_read_only": "on",
+                }
+            ],
+        )
+        reader_role = self.h.psql_rows(
+            "SELECT rolsuper, rolcreaterole, rolcreatedb, rolreplication, rolbypassrls "
+            "FROM pg_catalog.pg_roles WHERE rolname = current_user"
+        )
+        self._record(
+            "autocheck-reader-not-elevated",
+            "security",
+            True,
+            len(reader_role) == 1
+            and all(value is False for value in reader_role[0].values()),
+        )
+        reader_memberships = self.h.psql_rows(
+            "SELECT granted.rolname AS granted_role "
+            "FROM pg_catalog.pg_auth_members membership "
+            "JOIN pg_catalog.pg_roles member ON member.oid = membership.member "
+            "JOIN pg_catalog.pg_roles granted ON granted.oid = membership.roleid "
+            "WHERE member.rolname = current_user"
+        )
+        self._record(
+            "autocheck-reader-no-memberships",
+            "security",
+            [],
+            reader_memberships,
+        )
+        reader_relation_excess = self.h.psql_rows(
+            "SELECT n.nspname AS schema_name, c.relname AS relation_name "
+            "FROM pg_catalog.pg_class c "
+            "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f') "
+            "AND n.nspname NOT IN ('pg_catalog', 'information_schema') "
+            "AND n.nspname NOT LIKE 'pg_toast%' "
+            "AND ((n.nspname <> 'autocheck' "
+            "AND has_table_privilege(current_user, c.oid, 'SELECT')) "
+            "OR has_table_privilege(current_user, c.oid, 'INSERT') "
+            "OR has_table_privilege(current_user, c.oid, 'UPDATE') "
+            "OR has_table_privilege(current_user, c.oid, 'DELETE') "
+            "OR has_table_privilege(current_user, c.oid, 'TRUNCATE') "
+            "OR has_table_privilege(current_user, c.oid, 'REFERENCES') "
+            "OR has_table_privilege(current_user, c.oid, 'TRIGGER'))"
+        )
+        self._record(
+            "autocheck-reader-no-excess-relation-privileges",
+            "security",
+            [],
+            reader_relation_excess,
+        )
+        reader_create = self.h.psql_rows(
+            "SELECT n.nspname AS schema_name FROM pg_catalog.pg_namespace n "
+            "WHERE n.nspname NOT LIKE 'pg_%' "
+            "AND n.nspname <> 'information_schema' "
+            "AND has_schema_privilege(current_user, n.oid, 'CREATE')"
+        )
+        self._record(
+            "autocheck-reader-no-schema-create",
+            "security",
+            [],
+            reader_create,
+        )
+        reader_schema_usage = self.h.psql_rows(
+            "SELECT n.nspname AS schema_name FROM pg_catalog.pg_namespace n "
+            "WHERE n.nspname NOT LIKE 'pg_%' "
+            "AND n.nspname NOT IN ('information_schema', 'public', 'autocheck') "
+            "AND has_schema_privilege(current_user, n.oid, 'USAGE')"
+        )
+        self._record(
+            "autocheck-reader-no-unrelated-schema-usage",
+            "security",
+            [],
+            reader_schema_usage,
+        )
+        reader_sequence_excess = self.h.psql_rows(
+            "SELECT n.nspname AS schema_name, c.relname AS sequence_name "
+            "FROM pg_catalog.pg_class c "
+            "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE c.relkind = 'S' AND n.nspname NOT LIKE 'pg_%' "
+            "AND (has_sequence_privilege(current_user, c.oid, 'USAGE') "
+            "OR has_sequence_privilege(current_user, c.oid, 'SELECT') "
+            "OR has_sequence_privilege(current_user, c.oid, 'UPDATE'))"
+        )
+        self._record(
+            "autocheck-reader-no-sequence-privileges",
+            "security",
+            [],
+            reader_sequence_excess,
+        )
+        reader_function_excess = self.h.psql_rows(
+            "SELECT n.nspname AS schema_name, p.proname AS function_name, "
+            "pg_catalog.oidvectortypes(p.proargtypes) AS argument_types "
+            "FROM pg_catalog.pg_proc p "
+            "JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace "
+            "WHERE n.nspname NOT LIKE 'pg_%' "
+            "AND n.nspname NOT IN ('information_schema', 'autocheck') "
+            "AND has_function_privilege(current_user, p.oid, 'EXECUTE')"
+        )
+        self._record(
+            "autocheck-reader-no-application-function-execute",
+            "security",
+            [],
+            reader_function_excess,
+        )
+        reader_database_excess = self.h.psql_rows(
+            "SELECT privilege FROM (VALUES ('CREATE'), ('TEMP')) AS p(privilege) "
+            "WHERE has_database_privilege(current_user, current_database(), privilege)"
+        )
+        self._record(
+            "autocheck-reader-no-database-create-or-temp",
+            "security",
+            [],
+            reader_database_excess,
+        )
         columns = self.h.psql_rows(
             "SELECT table_name, column_name, data_type FROM information_schema.columns "
             "WHERE table_schema = 'autocheck'"
         )
         names = {row.get("table_name") for row in columns}
-        self._record("week3-stable-views", "startup", True, REQUIRED_VIEWS <= names)
+        self._record("week4-stable-views", "startup", True, REQUIRED_VIEWS <= names)
         actual_columns: dict[str, set[Any]] = {}
         for row in columns:
             actual_columns.setdefault(str(row.get("table_name")), set()).add(
                 row.get("column_name")
             )
         self._record(
-            "week3-stable-view-columns",
+            "week4-stable-view-columns",
             "startup",
             True,
             all(
@@ -1860,7 +2938,7 @@ class PublicChecker:
             if row.get("table_name") in REQUIRED_VIEWS
         }
         self._record(
-            "week3-stable-relations-are-views",
+            "week4-stable-relations-are-views",
             "startup",
             {view: "v" for view in REQUIRED_VIEWS},
             required_relations,
@@ -1874,12 +2952,12 @@ class PublicChecker:
             and row.get("data_type")
             != _expected_column_type(str(row.get("column_name")))
         )
-        self._record("week3-stable-view-types", "startup", [], invalid_types)
+        self._record("week4-stable-view-types", "startup", [], invalid_types)
         contract_info = self.h.psql_rows(
             "SELECT contract_version, generated_at FROM autocheck.contract_info"
         )
         self._record(
-            "week3-contract-info",
+            "week4-contract-info",
             "startup",
             True,
             len(contract_info) == 1
@@ -2026,9 +3104,67 @@ class PublicChecker:
             actual_privileges,
         )
 
+    def _check_runtime_database_principals(self, *, prefix: str) -> None:
+        expected = {
+            "api": "course_runtime",
+            "worker-a": "workflow_worker",
+            "worker-b": "workflow_worker",
+            "outbox-dispatcher": "outbox_dispatcher",
+            "outbox-dispatcher-b": "outbox_dispatcher",
+            "inbox-reconciler": "inbox_reconciler",
+            "inbox-reconciler-b": "inbox_reconciler",
+        }
+        service_ips = {
+            service: self.h.container_ips(service)
+            for service in (*expected, "receipt-adapter")
+        }
+        relevant_ips = set().union(*service_ips.values())
+        ip_sql = ", ".join(f"'{address}'::inet" for address in sorted(relevant_ips))
+        observed: set[tuple[str, str]] = set()
+        adapter_seen = False
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            rows = self.h.psql_rows(
+                "SELECT client_addr::text AS client_addr, usename "
+                "FROM pg_catalog.pg_stat_activity "
+                f"WHERE client_addr IN ({ip_sql})"
+            )
+            for row in rows:
+                address = str(row.get("client_addr"))
+                role = str(row.get("usename"))
+                observed.add((address, role))
+                if address in service_ips["receipt-adapter"]:
+                    adapter_seen = True
+            if all(
+                any((address, role) in observed for address in service_ips[service])
+                for service, role in expected.items()
+            ):
+                break
+            time.sleep(0.02)
+        mismatches = sorted(
+            f"{service}:{role}"
+            for service, expected_role in expected.items()
+            for address, role in observed
+            if address in service_ips[service] and role != expected_role
+        )
+        self._record(
+            f"{prefix}runtime-database-principals-no-mismatch",
+            "security",
+            [],
+            mismatches,
+        )
+        self._record(
+            f"{prefix}adapter-has-no-runtime-database-session",
+            "security",
+            False,
+            adapter_seen,
+        )
+
     def _check_provider_path(self) -> tuple[str, str]:
-        stop = self.h.compose(("stop", "outbox-dispatcher"), timeout=30)
-        self.h.require_docker_result(stop, "cannot stop outbox-dispatcher")
+        stop = self.h.compose(
+            ("stop", "outbox-dispatcher", "outbox-dispatcher-b"), timeout=30
+        )
+        self.h.require_docker_result(stop, "cannot stop Outbox dispatchers")
         operation_id, process_id = self._create_and_submit(
             "providerRequest", "provider"
         )
@@ -2106,9 +3242,16 @@ class PublicChecker:
         )
         self._record("invalid-signatures-no-inbox", "receipt", [], invalid_rows)
         start = self.h.compose(
-            ("up", "-d", "--no-build", "outbox-dispatcher"), timeout=30
+            (
+                "up",
+                "-d",
+                "--no-build",
+                "outbox-dispatcher",
+                "outbox-dispatcher-b",
+            ),
+            timeout=30,
         )
-        self.h.require_docker_result(start, "cannot start outbox-dispatcher")
+        self.h.require_docker_result(start, "cannot start Outbox dispatchers")
         completed = self._wait_operation(operation_id, "COMPLETED")
         self._record(
             "provider-success-completes-operation",
@@ -2185,9 +3328,11 @@ class PublicChecker:
         return operation_id, process_id
 
     def _check_adapter_deduplication(self) -> tuple[str, str]:
-        stopped = self.h.compose(("stop", "outbox-dispatcher"), timeout=30)
+        stopped = self.h.compose(
+            ("stop", "outbox-dispatcher", "outbox-dispatcher-b"), timeout=30
+        )
         self.h.require_docker_result(
-            stopped, "cannot stop outbox-dispatcher for adapter scenario"
+            stopped, "cannot stop Outbox dispatchers for adapter scenario"
         )
         operation_id, process_id = self._create_and_submit("adapterRequest", "adapter")
         external_rows = self._external_request(operation_id)
@@ -2259,6 +3404,9 @@ class PublicChecker:
             and first_json is not None
             and same_action_result(first_json, duplicate_json),
         )
+        if not isinstance(first_json, dict):
+            raise ContractError("adapter callback response is not an action envelope")
+        self.restart_callback = (callback_url, legacy, first.status, first_json)
         conflict_json = conflict.json()
         self._record(
             "adapter-conflicting-callback",
@@ -2307,10 +3455,17 @@ class PublicChecker:
             and rows[0].get("inbox_body_hash") == expected_body_hash,
         )
         started = self.h.compose(
-            ("up", "-d", "--no-build", "outbox-dispatcher"), timeout=30
+            (
+                "up",
+                "-d",
+                "--no-build",
+                "outbox-dispatcher",
+                "outbox-dispatcher-b",
+            ),
+            timeout=30,
         )
         self.h.require_docker_result(
-            started, "cannot restart outbox-dispatcher after adapter scenario"
+            started, "cannot restart Outbox dispatchers after adapter scenario"
         )
         sentinel_operation, _ = self._create_and_submit(
             "providerRequest", "dispatcher-sentinel"
@@ -2415,6 +3570,9 @@ class PublicChecker:
             and accepted_json is not None
             and same_action_result(accepted_json, repeated_json),
         )
+        if not isinstance(accepted_json, dict):
+            raise ContractError("manual response is not an action envelope")
+        self.restart_manual = (payload, key, accepted.status, accepted_json)
         self._record("manual-changed-repeat-conflict", "review", 409, conflict.status)
         completed = self._wait_operation(manual_operation, "COMPLETED")
         decisions = self.h.psql_rows(
@@ -2435,8 +3593,431 @@ class PublicChecker:
         )
         return manual_operation, manual_process
 
+    def _check_trace(
+        self,
+        provider_operation: str,
+        manual_operation: str,
+        *,
+        prefix: str = "",
+    ) -> None:
+        provider_rows = self._operation(provider_operation)
+        manual_rows = self._operation(manual_operation)
+        if len(provider_rows) != 1 or len(manual_rows) != 1:
+            raise ContractError("trace source operations are missing")
+        provider_process = self._uuid(
+            provider_rows[0].get("process_id"), "provider processId"
+        )
+        manual_process = self._uuid(
+            manual_rows[0].get("process_id"), "manual processId"
+        )
+        external_rows = self._external_request(provider_operation)
+        external_id = self._text_id(
+            external_rows[0].get("external_request_id"), "externalRequestId"
+        )
+        required = {
+            "query",
+            "dispatches",
+            "operation",
+            "operationEvents",
+            "process",
+            "steps",
+            "jobs",
+            "attempts",
+            "outbox",
+            "inbox",
+            "receipts",
+            "decisions",
+        }
+        for label, identifier, operation_id, process_id, evidence_key in (
+            (
+                "operation",
+                provider_operation,
+                provider_operation,
+                provider_process,
+                "receipts",
+            ),
+            ("external", external_id, provider_operation, provider_process, "receipts"),
+            ("manual", manual_operation, manual_operation, manual_process, "decisions"),
+        ):
+            response = self.h.action(
+                "diagnostics",
+                "trace",
+                {"identifier": identifier},
+                self.diagnostics_token,
+            )
+            envelope = response.json()
+            result = envelope.get("result") if isinstance(envelope, dict) else None
+            schema_errors = validate_json_schema(
+                result,
+                self.result_schemas["diagnostics-trace.result.schema.json"],
+            )
+            operation = result.get("operation") if isinstance(result, dict) else None
+            process = result.get("process") if isinstance(result, dict) else None
+            query = result.get("query") if isinstance(result, dict) else None
+            self._record(
+                f"{prefix}trace-{label}-complete",
+                "observability",
+                True,
+                response.status == 200
+                and isinstance(envelope, dict)
+                and envelope.get("status") == "ok"
+                and envelope.get("outcome") == "FOUND"
+                and isinstance(result, dict)
+                and not schema_errors
+                and required <= set(result)
+                and isinstance(query, dict)
+                and query.get("identifier") == identifier
+                and isinstance(query.get("matchedBy"), list)
+                and bool(query.get("matchedBy"))
+                and isinstance(operation, dict)
+                and operation.get("operationId") == operation_id
+                and isinstance(process, dict)
+                and process.get("processId") == process_id
+                and isinstance(result.get(evidence_key), list)
+                and bool(result.get(evidence_key)),
+            )
+        missing = self.h.action(
+            "diagnostics",
+            "trace",
+            {"identifier": f"unknown-{secrets.token_hex(12)}"},
+            self.diagnostics_token,
+        )
+        missing_json = missing.json()
+        self._record(
+            f"{prefix}trace-unknown-identifier",
+            "observability",
+            True,
+            missing.status == 404
+            and isinstance(missing_json, dict)
+            and missing_json.get("code") == "diagnostics.trace_not_found",
+        )
+
+    def _check_stalled(self, operation_ids: Sequence[str]) -> None:
+        registrations = self.h.psql_rows(
+            "SELECT version, http_method, outcomes, enabled, is_default "
+            "FROM autocheck.action_definitions "
+            "WHERE module = 'diagnostics' AND action = 'stalled' AND version = 1"
+        )
+        self._record(
+            "stalled-registered-action", "observability", True,
+            registrations == [{
+                "version": 1, "http_method": "POST", "outcomes": ["FOUND"],
+                "enabled": True, "is_default": True,
+            }],
+        )
+        before = self._restart_snapshot(operation_ids)
+        before.pop("action_dispatches", None)
+        response = self.h.action("diagnostics", "stalled", {}, self.diagnostics_token)
+        envelope = response.json()
+        result = envelope.get("result") if isinstance(envelope, dict) else None
+        schema_errors = validate_json_schema(
+            result, self.result_schemas["diagnostics-stalled.result.schema.json"]
+        )
+        meta = envelope.get("meta") if isinstance(envelope, dict) else None
+        self._record(
+            "stalled-response-contract", "observability", True,
+            response.status == 200
+            and self._content_type(response).startswith("application/json")
+            and isinstance(envelope, dict)
+            and envelope.get("status") == "ok"
+            and envelope.get("outcome") == "FOUND"
+            and isinstance(meta, dict)
+            and isinstance(meta.get("correlationId"), str)
+            and bool(meta.get("correlationId"))
+            and not schema_errors,
+        )
+        identifiers = [self._uuid(item["operationId"], "operationId") for item in result["items"]]
+        self._record(
+            "stalled-ordered-unique-operations", "observability", True,
+            identifiers == sorted(set(identifiers)),
+        )
+        for label, token, expected_status in (
+            ("no-token", "", 401),
+            ("invalid-token", "not-a-jwt", 401),
+            ("missing-policy", self.client_token, 403),
+        ):
+            if label == "no-token":
+                denied = self.h.http(
+                    "POST", "/api/diagnostics/stalled", body=receipt_bytes({}),
+                    headers={"Content-Type": "application/json", "X-Action-Version": "1"},
+                )
+            else:
+                denied = self.h.action("diagnostics", "stalled", {}, token)
+            denied_json = denied.json()
+            self._record(
+                f"stalled-{label}", "security", True,
+                denied.status == expected_status
+                and isinstance(denied_json, dict)
+                and denied_json.get("status") == "error",
+            )
+        invalid = self.h.action(
+            "diagnostics", "stalled", {"unexpected": True}, self.diagnostics_token
+        )
+        invalid_json = invalid.json()
+        self._record(
+            "stalled-invalid-payload", "observability", True,
+            invalid.status == 422
+            and isinstance(invalid_json, dict)
+            and invalid_json.get("status") == "error"
+            and invalid_json.get("code") == "payload.invalid",
+        )
+        after = self._restart_snapshot(operation_ids)
+        after.pop("action_dispatches", None)
+        self._record(
+            "stalled-preserves-business-evidence", "observability", True,
+            after == before,
+        )
+
+    def _check_postgres_readiness(self) -> None:
+        stopped = self.h.compose(("stop", "postgres"), timeout=30)
+        self.h.require_docker_result(stopped, "cannot stop PostgreSQL for readiness")
+        deadline = time.monotonic() + 15
+        ready: HttpResult | None = None
+        while time.monotonic() < deadline:
+            ready = self._service_http("api", "/health/ready")
+            if ready.status == 503:
+                break
+            time.sleep(0.2)
+        live = self._service_http("api", "/health/live")
+        ready_json = ready.json() if ready is not None else None
+        live_json = live.json()
+        self._record(
+            "health-postgres-affects-ready-not-live",
+            "observability",
+            True,
+            ready is not None
+            and ready.status == 503
+            and isinstance(ready_json, dict)
+            and ready_json.get("status") == "not_ready"
+            and ready_json.get("code") == "dependency.unavailable"
+            and live.status == 200
+            and isinstance(live_json, dict)
+            and live_json.get("status") == "live",
+        )
+        started = self.h.compose(("up", "-d", "--no-build", "postgres"), timeout=60)
+        self.h.require_docker_result(started, "cannot restart PostgreSQL")
+        self.h.wait_gateway(timeout=120)
+
+    def _restart_snapshot(
+        self, operation_ids: Sequence[str]
+    ) -> dict[str, list[dict[str, Any]]]:
+        values = ", ".join(f"'{value}'::uuid" for value in operation_ids)
+        operation_filter = f"SELECT operation_id FROM autocheck.operations WHERE operation_id IN ({values})"
+        process_filter = f"SELECT process_id FROM autocheck.operations WHERE operation_id IN ({values})"
+        external_filter = (
+            "SELECT external_request_id FROM autocheck.external_requests "
+            f"WHERE operation_id IN ({values})"
+        )
+        queries = {
+            "operations": (
+                "SELECT operation_id, request_id, operation_kind, amount, currency, "
+                "status, process_id, created_at, updated_at FROM autocheck.operations "
+                f"WHERE operation_id IN ({values}) ORDER BY operation_id"
+            ),
+            "operation_events": (
+                "SELECT event_id, operation_id, event_type, payload_hash, occurred_at "
+                "FROM autocheck.operation_events WHERE operation_id IN "
+                f"({operation_filter}) ORDER BY occurred_at, event_id"
+            ),
+            "action_dispatches": (
+                "SELECT correlation_id, request_id, module, action, version, principal, "
+                "payload_hash, status, outcome, occurred_at "
+                "FROM autocheck.action_dispatches WHERE request_id IN "
+                f"(SELECT request_id FROM autocheck.operations WHERE operation_id IN ({values})) "
+                "ORDER BY occurred_at, correlation_id"
+            ),
+            "processes": (
+                "SELECT process_id, business_key, flow_name, flow_version, state, "
+                "current_step_key, created_at, updated_at FROM autocheck.processes "
+                f"WHERE process_id IN ({process_filter}) ORDER BY process_id"
+            ),
+            "steps": (
+                "SELECT step_instance_id, process_id, step_key, step_type, state, outcome, "
+                "entered_at, completed_at FROM autocheck.steps WHERE process_id IN "
+                f"({process_filter}) ORDER BY entered_at, step_instance_id"
+            ),
+            "jobs": (
+                "SELECT job_id, process_id, step_instance_id, execution_id, state, "
+                "lease_owner, lease_version, lease_until, attempt_count, next_attempt_at "
+                "FROM autocheck.jobs WHERE process_id IN "
+                f"({process_filter}) ORDER BY job_id"
+            ),
+            "attempts": (
+                "SELECT attempt_id, job_id, execution_id, lease_version, attempt_number, "
+                "status, outcome, error_code, started_at, finished_at "
+                "FROM autocheck.attempts WHERE job_id IN "
+                "(SELECT job_id FROM autocheck.jobs WHERE process_id IN "
+                f"({process_filter})) ORDER BY started_at, attempt_id"
+            ),
+            "signals": (
+                "SELECT message_id, process_id, signal_type, body_hash, status, received_at "
+                "FROM autocheck.signals WHERE process_id IN "
+                f"({process_filter}) ORDER BY received_at, message_id"
+            ),
+            "workflow_events": (
+                "SELECT event_id, process_id, step_instance_id, event_type, occurred_at "
+                "FROM autocheck.workflow_events WHERE process_id IN "
+                f"({process_filter}) ORDER BY occurred_at, event_id"
+            ),
+            "external_requests": (
+                "SELECT external_request_id, operation_id, state, payload_hash, created_at "
+                "FROM autocheck.external_requests WHERE operation_id IN "
+                f"({operation_filter}) ORDER BY external_request_id"
+            ),
+            "outbox": (
+                "SELECT outbox_id, external_request_id, state, attempt_count, lease_owner, "
+                "lease_version, lease_until, next_attempt_at, last_error_code, created_at, "
+                "delivered_at, dead_at FROM autocheck.outbox WHERE external_request_id IN "
+                f"({external_filter}) ORDER BY outbox_id"
+            ),
+            "receipts": (
+                "SELECT message_id, external_request_id, message_version, outcome, "
+                "signature_valid, body_hash, received_at, applied_at FROM autocheck.receipts "
+                f"WHERE external_request_id IN ({external_filter}) ORDER BY message_id"
+            ),
+            "inbox": (
+                "SELECT message_id, body_hash, state, received_at, applied_at "
+                "FROM autocheck.inbox WHERE message_id IN "
+                "(SELECT message_id FROM autocheck.receipts WHERE external_request_id IN "
+                f"({external_filter})) ORDER BY message_id"
+            ),
+            "decisions": (
+                "SELECT decision_id, process_id, step_instance_id, source, principal, "
+                "reason_hash, outcome, rule_version, created_at FROM autocheck.decisions "
+                f"WHERE process_id IN ({process_filter}) ORDER BY created_at, decision_id"
+            ),
+        }
+        return {name: self.h.psql_rows(query) for name, query in queries.items()}
+
+    def _check_full_restart(self, operation_ids: Sequence[str]) -> None:
+        before = self._restart_snapshot(operation_ids)
+        self._record(
+            "full-restart-snapshot-complete",
+            "recovery",
+            len(operation_ids),
+            len(before["operations"]),
+        )
+        self._capture_logs()
+        stopped = self.h.compose(("down", "--remove-orphans"), timeout=120)
+        self.h.require_docker_result(stopped, "cannot recreate full application stack")
+        started = self.h.compose(("up", "-d", "--no-build"), timeout=180)
+        self.h.require_docker_result(started, "cannot restart full application stack")
+        self.h.wait_gateway(timeout=180)
+        for service in RUNNING_SERVICES:
+            self.h.container_id(service)
+        cli_status, cli_exit_code = self.h.service_state("cli")
+        self._record(
+            "cli-restart-completed",
+            "recovery",
+            True,
+            cli_status == "running"
+            or (cli_status == "exited" and cli_exit_code == 0),
+        )
+        self._record(
+            "full-restart-preserves-evidence",
+            "recovery",
+            True,
+            self._restart_snapshot(operation_ids) == before,
+        )
+        if self.restart_callback is None or self.restart_manual is None:
+            raise ContractError("restart replay evidence is unavailable")
+        callback_url, callback_payload, callback_status, callback_json = (
+            self.restart_callback
+        )
+        callback_repeat = self.h.internal_http(
+            "receipt-adapter",
+            "POST",
+            callback_url,
+            body=callback_payload,
+            headers={"Content-Type": "application/json"},
+        )
+        self._record(
+            "callback-repeat-after-full-restart",
+            "recovery",
+            True,
+            callback_repeat.status == callback_status
+            and same_action_result(callback_repeat.json(), callback_json),
+        )
+        manual_payload, manual_key, manual_status, manual_json = self.restart_manual
+        manual_repeat = self.h.action(
+            "workflow",
+            "manual",
+            manual_payload,
+            self.reviewer_token,
+            idempotency_key=manual_key,
+        )
+        self._record(
+            "manual-repeat-after-full-restart",
+            "recovery",
+            True,
+            manual_repeat.status == manual_status
+            and same_action_result(manual_repeat.json(), manual_json),
+        )
+        self._record(
+            "full-restart-replays-preserve-evidence",
+            "recovery",
+            True,
+            self._restart_snapshot(operation_ids) == before,
+        )
+        self._check_trace(
+            operation_ids[1], operation_ids[-1], prefix="post-restart-"
+        )
+        sentinel_operation, _ = self._create_and_submit(
+            "providerRequest", "full-restart-sentinel"
+        )
+        completed = self._wait_operation(sentinel_operation, "COMPLETED")
+        self._record(
+            "full-restart-processing-resumes",
+            "recovery",
+            True,
+            len(completed) == 1 and completed[0].get("status") == "COMPLETED",
+        )
+
+    def _capture_logs(self) -> None:
+        logs = self.h.compose(("logs", "--no-color"), timeout=30)
+        self.h.require_docker_result(logs, "cannot inspect candidate logs")
+        self.captured_logs.append(logs.stdout + "\n" + logs.stderr)
+
+    def _check_final_log_hygiene(self) -> None:
+        self._capture_logs()
+        text = "\n".join(self.captured_logs)
+        leaked_secrets = [
+            label
+            for label, value in (
+                (f"synthetic-secret-{index}", secret)
+                for index, secret in enumerate(self.sensitive, start=1)
+            )
+            if value and value in text
+        ]
+        self._record(
+            "final-synthetic-secrets-not-in-logs",
+            "security",
+            [],
+            leaked_secrets,
+        )
+        leaked_messages = sorted(
+            label
+            for label, value in self.forbidden_log_values.items()
+            if value
+            and (
+                value in text
+                or base64.b64encode(value.encode("utf-8")).decode("ascii") in text
+            )
+        )
+        self._record(
+            "final-full-messages-not-in-logs",
+            "security",
+            [],
+            leaked_messages,
+        )
+
     def _check_recreate_and_hygiene(self, operation_ids: Sequence[str]) -> None:
-        for service in ("inbox-reconciler", "outbox-dispatcher"):
+        for service in (
+            "inbox-reconciler",
+            "inbox-reconciler-b",
+            "outbox-dispatcher",
+            "outbox-dispatcher-b",
+        ):
             stopped = self.h.compose(("stop", service), timeout=30)
             self.h.require_docker_result(
                 stopped, f"cannot stop {service} for recovery scenario"
@@ -2483,6 +4064,7 @@ class PublicChecker:
             True,
             len(received) == 1 and received[0].get("state") == "RECEIVED",
         )
+        self._capture_logs()
         result = self.h.compose(
             (
                 "up",
@@ -2524,9 +4106,8 @@ class PublicChecker:
                 1,
                 len(rows),
             )
-        logs = self.h.compose(("logs", "--no-color"), timeout=30)
-        self.h.require_docker_result(logs, "cannot inspect candidate logs")
-        text = logs.stdout + "\n" + logs.stderr
+        self._capture_logs()
+        text = "\n".join(self.captured_logs)
         leaked = [secret for secret in self.sensitive if secret and secret in text]
         self._record("synthetic-secrets-not-in-logs", "security", [], leaked)
         leaked_messages = sorted(
@@ -2553,22 +4134,44 @@ class PublicChecker:
     def execute(self) -> None:
         self._check_admission_and_start()
         self._check_database_contract()
+        self._check_runtime_database_principals(prefix="startup-")
+        self._check_observability_endpoints()
+        outage_operation, _ = self._check_provider_outage_recovery()
         provider_operation, _ = self._check_provider_path()
         adapter_operation, _ = self._check_adapter_deduplication()
         manual_operation, _ = self._check_review()
+        self._check_runtime_database_principals(prefix="post-workload-")
+        self._check_trace(provider_operation, manual_operation)
         self._check_recreate_and_hygiene(
-            (provider_operation, adapter_operation, manual_operation)
+            (
+                outage_operation,
+                provider_operation,
+                adapter_operation,
+                manual_operation,
+            )
         )
+        self._check_postgres_readiness()
+        self._check_full_restart(
+            (outage_operation, provider_operation, adapter_operation, manual_operation)
+        )
+        self._check_stalled(
+            (outage_operation, provider_operation, adapter_operation, manual_operation)
+        )
+        self._check_final_log_hygiene()
 
     def cleanup(self) -> None:
         if not self.cleanup_armed or self.args.keep_stack or self.harness is None:
             return
         result = self.harness.compose(
-            ("down", "--volumes", "--remove-orphans", "--rmi", "local"),
+            ("down", "--volumes", "--remove-orphans"),
             timeout=600,
         )
         if not result.ok:
             raise EnvironmentFailure("isolated Docker cleanup failed")
+        for image in sorted(self.isolated_images):
+            removed = self.harness.run(("docker", "image", "rm", image), timeout=60)
+            if not removed.ok:
+                raise EnvironmentFailure("isolated checker image cleanup failed")
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -2679,7 +4282,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except Exception as error:
         print(f"Cannot write public report: {error}", file=sys.stderr)
         return 2
-    print(f"week-3 public check: {status}")
+    print(f"week-4 public check: {status}")
     return exit_code
 
 
