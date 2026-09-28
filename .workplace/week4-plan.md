@@ -107,6 +107,8 @@ API принимает запрос → пишет состояние в **Progr
 
 ## Фаза 1 — Compose seam и конфигурация
 
+**Статус (2026-09-28 Asia/Barnaul):** выполнено — *-b в compose, COURSE_* прокинуты, named volume course_data сохранён, utocheck_reader + миграция, сервисы Up (project eliapay).
+
 1. Добавить `outbox-dispatcher-b` и `inbox-reconciler-b` (тот же image `reliapay-python-perimeter:local`, разные entrypoints/role, те же DB grants).
 2. `OUTBOX_OWNER` / owner B — разные значения (`outbox-dispatcher` / `outbox-dispatcher-b`).
 3. Выровнять `COURSE_*` под configuration contract (timeouts, attempts, backoff, lease, poll, failpoint, autocheck password и т.д.).
