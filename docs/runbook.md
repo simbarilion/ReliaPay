@@ -150,3 +150,7 @@ docker compose logs --tail=100 worker-a outbox-dispatcher api
 ```
 
 Не используйте `docker compose down -v` на живом учебном томе `course_data`: это удалит PostgreSQL data directory. Для остановки достаточно `docker compose down` (том сохранится) или `stop` отдельных сервисов.
+
+## Callback adapter
+
+Provider шлёт legacy callback на `http://receipt-adapter:8082/...` (listen_port adapter из configuration.md, не 8080). `PROVIDER_CALLBACK_TOKEN` — JWT HS256 со scope `receipt:write` (тот же iss/aud/signing key, что у COURSE_JWT_*); opaque-строка даёт 401 на `receipt.accept`.
