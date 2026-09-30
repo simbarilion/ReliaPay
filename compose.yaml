@@ -198,11 +198,17 @@ services:
       COURSE_OUTBOX_JITTER_MAX_MS: ${COURSE_OUTBOX_JITTER_MAX_MS:-100}
       COURSE_OUTBOX_LEASE_MS: ${COURSE_OUTBOX_LEASE_MS:-2000}
       COURSE_OUTBOX_POLL_MS: ${COURSE_OUTBOX_POLL_MS:-100}
+    # Start order only: wait for provider (+ callback path via receipt-adapter→provider).
+    # Readiness of the dispatcher itself remains PostgreSQL-only (see perimeter health).
     depends_on:
       postgres:
         condition: service_healthy
       cli:
         condition: service_healthy
+      receipt-adapter:
+        condition: service_started
+      provider-simulator:
+        condition: service_started
     restart: unless-stopped
 
   outbox-dispatcher-b:
@@ -215,6 +221,10 @@ services:
         condition: service_healthy
       cli:
         condition: service_healthy
+      receipt-adapter:
+        condition: service_started
+      provider-simulator:
+        condition: service_started
     restart: unless-stopped
 
   receipt-adapter:

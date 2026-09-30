@@ -40,6 +40,14 @@ curl -sS http://127.0.0.1:8080/api/diagnostics/stalled \
 
 До/после вызова предметные поля operation/process/outbox не должны меняться (только обычный action audit). Чтение не порождает повторный платёж и не меняет Outbox/Inbox.
 
+## Полный restart без удаления тома
+
+Порядок старта HTTP-доставки: `receipt-adapter` → `provider-simulator` → оба `outbox-dispatcher` (Compose `depends_on`, условие `service_started`). Это только **порядок запуска**, не readiness: `/health/ready` dispatcher по-прежнему зависит только от PostgreSQL; недоступность провайдера не делает dispatcher `not_ready`.
+
+После `docker compose down` и `docker compose up -d` (без `-v`) том `course_data` сохраняется. Исчерпанная доставка остаётся `DEAD` (без тихой перестановки в `PENDING`); продолжение — через позднюю валидную квитанцию и существующий inbox reconcile, без ручного SQL. Не используйте silent requeue DEAD и не добавляйте provider в ready-проверку dispatcher.
+
+Проверка: поднимите контур, создайте платёж, выполните all-at-once restart без `-v`, убедитесь что ранее готовый callback-путь снова принимает квитанции; число оплат у провайдера и предметные переходы сверяйте по `diagnostics.trace` / autocheck, а не по HTTP-кодам alone.
+
 ## Цикл failpoint без ручного SQL
 
 Failpoints работают **только** при `COURSE_TEST_PROFILE=1`. Иначе `COURSE_FAILPOINT` игнорируется. Активации через HTTP нет.
