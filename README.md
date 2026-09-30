@@ -261,7 +261,7 @@ docker compose up -d --build
 | `COURSE_FAILPOINT` | Одна точка зависания (см. [runbook](docs/runbook.md)); пусто вне failpoint-сценария; вне test profile игнорируется |
 | `COURSE_TEST_PROFILE` | `1` — короткие интервалы и разрешение failpoints; в tracked Compose default `1` |
 | `COURSE_PROVIDER_TIMEOUT_MS` | Timeout HTTP provider у dispatcher (test profile: `500`) |
-| `COURSE_OUTBOX_MAX_ATTEMPTS` | Bounded attempts доставки, включая первую (test: `4`) |
+| `COURSE_OUTBOX_MAX_ATTEMPTS` | Bounded attempts доставки, включая первую (test: `4`); reclaim на потолке → `DEAD` без HTTP |
 | `COURSE_OUTBOX_BACKOFF_BASE_MS` / `_MAX_MS` / `COURSE_OUTBOX_JITTER_MAX_MS` | Backoff+jitter; `next_attempt_at` хранится в PostgreSQL |
 | `COURSE_OUTBOX_LEASE_MS` / `COURSE_OUTBOX_POLL_MS` | Lease delivery и poll dispatcher (test: `2000` / `≤100`) |
 | `COURSE_JOB_LEASE_MS` / `COURSE_WORKER_POLL_MS` | Lease job и poll worker (test: `2000` / `≤100`) |
@@ -525,7 +525,7 @@ HTTP POST /api/payment/request -> 200 correlationId=...
 | `/health/ready` = 503 | `docker compose ps`; логи `postgres`, `cli`, `api` |
 | cli не healthy | миграция с другим checksum; пароль publication |
 | worker не берёт job | `flow list`; активна ли карта; READY job в `flow get` |
-| `workflow.lease_stale` | finish/fail с чужим owner или старым `leaseVersion` |
+| `workflow.lease_stale` | finish/fail с чужим owner, старым `leaseVersion` или истёкшим `lease_until` до reclaim |
 | нет `failpoint.reached` | `COURSE_FAILPOINT` и `COURSE_WORKER_INSTANCE_ID` |
 | 401 `auth.invalid` | ключ, iss, aud, срок `exp`, типы claims |
 | 403 `access.denied` | `scope` не покрывает `required_policy` |

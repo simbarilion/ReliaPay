@@ -129,7 +129,7 @@ docker compose up -d --no-build --force-recreate worker-a
 
 ### `workflow.lease_stale`
 
-Stale `finish_job` / `fail_job`: чужой `lease_owner` или устаревший `leaseVersion` после reclaim. Цикл worker не останавливается; завершение игнорируется. В trace / `workflow/get` виден рост `leaseVersion` у нового владельца. Это fencing, а не поломка контура.
+Stale `finish_job` / `fail_job`: чужой `lease_owner`, устаревший `leaseVersion` после reclaim **или истёкший `lease_until` ещё до нового claim**. PostgreSQL write boundary отклоняет завершение, если аренда уже не действует (`lease_until <= clock_timestamp()`), даже когда owner/version формально те же. Цикл worker не останавливается; эффект в общей транзакции откатывается. В trace / `workflow/get` после reclaim виден рост `leaseVersion` у нового владельца. Это fencing, а не поломка контура.
 
 ### Outbox `DEAD` vs process `FAILED`
 
@@ -138,7 +138,7 @@ Stale `finish_job` / `fail_job`: чужой `lease_owner` или устарев�
 | Исчерпаны автоматические попытки доставки | `DEAD` (+ `dead_at`, `last_error_code`) | остаётся `PROCESSING` | остаётся `WAITING_SIGNAL` |
 | Terminal исчерпание action retries у job | — | по карте | job `DEAD`, process может стать `FAILED` |
 
-`DEAD` доставки **не** означает domain reject и **не** переводит process в `FAILED`. Такие операции попадают в `diagnostics.stalled`. Поздняя валидная квитанция может перевести delivery в `CONFIRMED` и продолжить process.
+`DEAD` доставки **не** означает domain reject и **не** переводит process в `FAILED`. Повторный claim при `attempt_count >= COURSE_OUTBOX_MAX_ATTEMPTS` (включая первую попытку) переводит запись в `DEAD` **без** нового HTTP к провайдеру и **без** увеличения attempts; диагностические поля (`dead_at`, `last_error_code`) сохраняются. Такие операции попадают в `diagnostics.stalled` после порога возраста. Поздняя валидная квитанция может перевести delivery в `CONFIRMED` и продолжить process.
 
 ### Lost response / late receipt
 
