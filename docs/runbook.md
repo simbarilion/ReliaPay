@@ -25,7 +25,9 @@ Trace не содержит JWT, HMAC, секреты, полные payload/body
 
 ## diagnostics.stalled
 
-Выборка операций с затянувшимся ожиданием квитанции после исчерпания автоматических попыток доставки (типично Outbox `DEAD` при process в `WAITING_SIGNAL`). Policy: `diagnostics:read`. Состояние не меняет.
+Выборка операций с **затянувшимся** ожиданием квитанции после исчерпания автоматических попыток доставки (Outbox `DEAD` при process в `WAITING_SIGNAL` и operation `PROCESSING`). Policy: `diagnostics:read`. Состояние не меняет.
+
+**Правило возраста (авторитетно в PostgreSQL):** операция попадает в выборку только если `delivery.outbox.dead_at` уже старше порога относительно `clock_timestamp()`. Отсчёт начинается с момента перехода Outbox в `DEAD` (колонка `dead_at`). По умолчанию порог — **60 секунд** (`interval '60 seconds'`). Переопределение на сессии/роли runtime: GUC `app.diagnostics_stalled_after` (текст interval PostgreSQL, например `10 seconds`). Нулевой или отрицательный порог игнорируется и заменяется значением по умолчанию. Свежая `DEAD`-запись до границы в `items` не входит; после валидной квитанции (`CONFIRMED`) запись исчезает из выборки.
 
 ```bash
 curl -sS http://127.0.0.1:8080/api/diagnostics/stalled \
@@ -36,7 +38,7 @@ curl -sS http://127.0.0.1:8080/api/diagnostics/stalled \
 
 Успех: HTTP 200, `outcome=FOUND`, `result.items` — массив объектов `{ "operationId", "processId", "externalRequestId" }` без повторов, порядок по `operationId`. Пустая выборка: `{"items":[]}`.
 
-До/после вызова предметные поля operation/process/outbox не должны меняться (только обычный action audit).
+До/после вызова предметные поля operation/process/outbox не должны меняться (только обычный action audit). Чтение не порождает повторный платёж и не меняет Outbox/Inbox.
 
 ## Цикл failpoint без ручного SQL
 
